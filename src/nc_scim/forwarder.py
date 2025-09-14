@@ -8,7 +8,10 @@ from nc_scim import NEXTCLOUD_BASEURL, NEXTCLOUD_USERNAME, NEXTCLOUD_SECRET
 
 
 standard_headers = {'OCS-APIRequest': 'true'}
-post_headers = {**standard_headers, 'Content-Type': 'application/x-www-form-urlencoded'}
+post_headers = {
+    **standard_headers, 
+    'Content-Type': 'application/x-www-form-urlencoded'
+}
 
 
 def url_assemble(path: str) -> str:
@@ -101,7 +104,7 @@ class UserAPI:
             requests.post(
                 url_assemble('/users'),
                 headers=post_headers,
-                params={
+                data={
                     'userid': user_id,
                     'displayName': display_name,
                     'email': email,
@@ -229,7 +232,8 @@ class UserAPI:
         r = NCResponse(
             requests.post(
                 url_assemble(f'/user/{user_id}/groups'),
-                headers=post_headers
+                headers=post_headers,
+                data={ 'groupid': group_id }
             ),
             status_codes={
                 100: 'successful',
@@ -286,7 +290,7 @@ class GroupAPI:
             requests.post(
                 url_assemble('/groups'),
                 headers=post_headers,
-                params={ 'groupid': group_id }
+                data={ 'groupid': group_id }
             ),
             status_codes={
                 100: 'successful',
@@ -302,7 +306,7 @@ class GroupAPI:
     @staticmethod
     def get_members(group_id: str) -> tuple[None, NCResponse]:
         r = NCResponse(
-            requests.post(
+            requests.get(
                 url_assemble(f'/groups/{group_id}'),
                 headers=standard_headers
             ),
