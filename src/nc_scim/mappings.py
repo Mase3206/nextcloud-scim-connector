@@ -2,16 +2,8 @@
 from scim2_models import User as ScimUser, Name, GroupMembership
 from typing import Optional, Any
 
-# class User(ScimUser):
-#     def __init__(self, enabled: Optional[bool], id: Optional[str], displayname: Optional[str], *args, **kwargs):
-#         self.active = enabled
-#         self.user_name = id
-#         self.display_name = displayname
-#         # self.name = Name(formatted=displayname)
-#         super().__init__(*args, **kwargs)
 
-
-def to_scim_user(nc_user: dict[str, Any]) -> ScimUser:
+def transform_nc_user_to_scim(nc_user: dict[str, Any]) -> ScimUser:
     scim_user = {}
 
     if (is_active := nc_user.get('enabled', None)) is not None:
@@ -52,7 +44,7 @@ def to_scim_user(nc_user: dict[str, Any]) -> ScimUser:
     return ScimUser.model_validate(scim_user)
     
 
-def to_nc_user(scim_user: ScimUser):
+def transform_scim_user_to_nc(scim_user: ScimUser) -> dict[str, Any]:
     # Editable fields
     # displayname
     # email
@@ -62,9 +54,11 @@ def to_nc_user(scim_user: ScimUser):
     # twitter
     nc_user = {
         'enabled': scim_user.active,
-        'id': scim_user.id,
-        # 'displayname'
+        'id': scim_user.user_name,
+        'displayname': scim_user.display_name,
+        'email': e[0].value if (e := scim_user.emails) else None,
     }
+    return nc_user
 
 
 
@@ -72,14 +66,14 @@ if __name__ == '__main__':
     import json
     from pathlib import Path
     
-    with open(Path('.').resolve() / 'sample' / 'sample.json', 'r') as f:
+    with open(Path('.').resolve() / 'sample' / 'users.json', 'r') as f:
         sample_data: dict[str, list[dict[str, Any]]] = json.load(f)
     
     nc_users = sample_data['users']
     scim_users: list[ScimUser] = []
     for u in nc_users:
-        scim_users.append(to_scim_user(u))
+        scim_users.append(transform_nc_user_to_scim(u))
 
     for u in scim_users:
-        print(json.dumps(u.model_dump(), indent=2), end='\n\n')
-
+        print(json.dumps(u.model_dump(), indent=2))
+        print(json.dumps(transform_scim_user_to_nc(u), indent=2), end='\n\n')
