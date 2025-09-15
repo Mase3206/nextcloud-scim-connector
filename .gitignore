@@ -211,3 +211,6 @@ __marimo__/
 
 # Config files
 config.yml
+
+# Sample data
+sample/

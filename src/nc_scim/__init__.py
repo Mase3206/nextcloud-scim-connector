@@ -15,4 +15,4 @@ NEXTCLOUD_HTTPS = True if _nc.get('https', True) else False
 NEXTCLOUD_USERNAME: str = _nc.get('username')
 NEXTCLOUD_SECRET: str = _nc.get('secret')
 
-print(SCIM_TOKEN, NEXTCLOUD_BASEURL)
+# print(SCIM_TOKEN, NEXTCLOUD_BASEURL)

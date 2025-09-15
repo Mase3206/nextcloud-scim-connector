@@ -1,0 +1,15 @@
+{
+    "configurations": [
+        {
+            "name": "Start receiver",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "uvicorn",
+            "args": [
+                "nc_scim.receiver:app",
+                "--reload"
+            ],
+            "jinja": true
+        }
+    ]
+}

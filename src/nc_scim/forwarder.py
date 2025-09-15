@@ -1,9 +1,10 @@
 from __future__ import annotations
-from typing import Any
+from typing import Any, Optional
 
 import requests
 import xmltodict
 from xml.etree import ElementTree as ET
+import pydantic
 from nc_scim import NEXTCLOUD_BASEURL, NEXTCLOUD_USERNAME, NEXTCLOUD_SECRET
 
 
