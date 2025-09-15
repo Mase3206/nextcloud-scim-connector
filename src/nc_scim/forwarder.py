@@ -305,7 +305,7 @@ class GroupAPI:
     
     # https://docs.nextcloud.com/server/latest/admin_manual/configuration_user/instruction_set_for_groups.html#get-members-of-a-group
     @staticmethod
-    def get_members(group_id: str) -> tuple[None, NCResponse]:
+    def get_members(group_id: str) -> tuple[list[str], NCResponse]:
         r = NCResponse(
             requests.get(
                 url_assemble(f'/groups/{group_id}'),
@@ -313,7 +313,14 @@ class GroupAPI:
             ),
             status_codes={ 100: 'successful' }
         )
-        return None, r
+        if not (members := r.data['users']):
+            return [], r
+        elif isinstance(members, str):
+            return [members], r
+        elif isinstance(members, list):
+            return members, r
+        else:
+            raise TypeError('Group members are not of type None, str, or list')
 
 
     # https://docs.nextcloud.com/server/latest/admin_manual/configuration_user/instruction_set_for_groups.html#edit-data-of-a-single-group

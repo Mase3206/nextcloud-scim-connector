@@ -1,13 +1,14 @@
 from fastapi import FastAPI, logger
 from nc_scim.forwarder import UserAPI, GroupAPI
-# from nc_scim.models import User
+from scim2_models import User, Group, ListResponse, Resource
 import json
-from typing import Optional
+from typing import Optional, Union, List
 
 app = FastAPI()
 
 @app.get('/Schemas')
 def get_schemas(): ...
+
 
 @app.get('/Users')
 def get_all_users():
@@ -20,35 +21,55 @@ def get_all_users():
         scim_users.append(u_data)
     
     return scim_users
-    # _payload = {
-    #     "schemas": ["urn:ietf:params:scim:api:messages:2.0:ListResponse"],
-    #     "totalResults": len(all_users),
-    #     "Resources": [
-    #         {
-    #             "schemas": ["urn:ietf:params:scim:schemas:core:2.0:User"],
-    #             "id": "2441309d85324e7793ae",
-    #             "externalId": "7fce0092-d52e-4f76-b727-3955bd72c939",
-    #             "meta": {
-    #                 "resourceType": "User",
-    #                 "created": "2018-03-27T19:59:26.000Z",
-    #                 "lastModified": "2018-03-27T19:59:26.000Z"
-                    
-    #             },
-    #             "userName": "Test_User_00aa00aa-bb11-cc22-dd33-44ee44ee44ee",
-    #             "name": {
-    #                 "familyName": "familyName",
-    #                 "givenName": "givenName"
-    #             },
-    #             "active": True,
-    #             "emails": [
-    #                     {
-    #                     "value": "Test_User_11bb11bb-cc22-dd33-ee44-55ff55ff55ff@testuser.com",
-    #                     "type": "work",
-    #                     "primary": True
-    #                 }
-    #             ]
-    #         }
-    #     ],
-    #     "startIndex": 1,
-    #     "itemsPerPage": 20
-    # }
+
+
+@app.get('/Groups')
+def get_all_groups(attributes: str | None = None):
+    all_groups, _ = GroupAPI.get_all()
+    logger.logger.info(attributes)
+
+    if not attributes:
+        scim_groups: list[Group] = [
+            Group.model_validate({
+                'displayName': g,
+                'id': g
+            }) for g in all_groups
+        ]
+
+    elif attributes ==  'members':
+        scim_groups: list[Group] = [
+            Group.model_validate({
+                'displayName': g,
+                'id': g,
+                'members': [
+                    {
+                        'value': member,
+                        'display': member
+                    } for member in GroupAPI.get_members(g)[0]
+                ]
+            }) for g in all_groups
+        ]
+
+    else:
+        raise NotImplementedError(f'Adding the {attributes} attribute is not supported at this time. Only the "member" attribute is supported.')
+
+    return ListResponse[Group].model_validate({
+        'Resources': [g.model_dump() for g in scim_groups]
+    })
+
+
+if __name__ == '__main__':
+    all_groups, _ = GroupAPI.get_all()
+    print([
+        {
+            'displayName': g,
+            'id': g,
+            'members': [
+                {
+                    'value': member,
+                    'display': member
+                } for member in GroupAPI.get_members(g)[0]
+            ]
+        } for g in all_groups
+    ])
+    # print(GroupAPI.get_members('Standard Users')[0])
