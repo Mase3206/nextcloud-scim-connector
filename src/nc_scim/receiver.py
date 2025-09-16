@@ -4,6 +4,7 @@ from urllib.parse import urlencode as encode_query_string
 
 from fastapi import FastAPI
 from fastapi.params import Query
+from fastapi.responses import JSONResponse, Response
 from scim2_models import (
     Bulk,
     ChangePassword,
@@ -18,8 +19,8 @@ from scim2_models import (
 )
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from nc_scim.forwarder import GroupAPI, UserAPI
-from nc_scim.mappings import group_nc_to_scim, user_nc_to_scim
+from nc_scim.forwarder import GroupAPI, NCAPIResponseError, UserAPI
+from nc_scim.mappings import group_nc_to_scim, user_nc_to_scim, user_scim_to_nc
 
 
 class QueryStringFlatteningMiddleware:
@@ -52,8 +53,7 @@ app = FastAPI()
 app.add_middleware(QueryStringFlatteningMiddleware)
 
 
-# @app.get('/Schemas')
-# def get_schemas(): ...
+# Users
 
 
 @app.get("/Users")
@@ -81,15 +81,84 @@ def get_users(
         )
         scim_users.append(transformed)
 
-    # scim_users = list(sorted(
-    #     scim_users,
-    #     key = lambda u: str(getattr(u, sortBy)),
-    #     reverse = (sortOrder == SearchRequest.SortOrder.descending)
-    # ))
-
     return ListResponse[User].model_validate(
         {"Resources": [u.model_dump() for u in scim_users]}
     )
+
+
+@app.get("/Users/{user_id}")
+def get_user_by_id(
+    user_id: str,
+    attributes: Annotated[list, Query()] = [],
+    excludedAttributes: Annotated[list, Query()] = [],
+):
+    """Get the user with the specified user ID."""
+    user, _ = UserAPI.get(user_id)
+    if user is None:
+        return JSONResponse(
+            status_code=404, content={"message": f"User '{user_id}' does not exist."}
+        )
+    # return PlainTextResponse(f'"{user == None}"')
+    return User.model_validate(
+        user_nc_to_scim(
+            user,
+            attributes=["groups"] + attributes,
+            excluded_attributes=excludedAttributes,
+            all_attributes=True,
+        )
+    )
+
+
+@app.post("/Users")
+def create_user(data: User):
+    nc_user = user_scim_to_nc(data)
+    try:
+        UserAPI.new(**nc_user)
+    except NCAPIResponseError as e:
+        if e.nc_response.status_code == 102:
+            return JSONResponse(
+                status_code=409,
+                content={
+                    "message": f"User '{nc_user['user_id']}' already exists",
+                    "nc_status_code": e.nc_response.status_code,
+                },
+            )
+        elif e.nc_response.status_code >= 101 and e.nc_response.status_code <= 111:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "message": e.message,
+                    "nc_status_code": e.nc_response.status_code,
+                },
+            )
+    return Response(status_code=201)
+
+
+@app.delete("/Users/{user_id}")
+def delete_user(user_id: str):
+    try:
+        UserAPI.delete(user_id)[1].raise_for_ncapi_status()
+    except NCAPIResponseError as e:
+        if e.nc_response.status_code == 998:
+            return JSONResponse(
+                status_code=404,
+                content={
+                    "message": f"User '{user_id}' does not exist",
+                    "nc_status_code": e.nc_response.status_code,
+                },
+            )
+        else:
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "message": "Unknown error",
+                    "nc_response": e.nc_response.serialize(),
+                },
+            )
+    return Response(status_code=204)
+
+
+# Groups
 
 
 @app.get("/Groups")
@@ -119,6 +188,9 @@ def get_groups(
     return ListResponse[Group].model_validate(
         {"Resources": [g.model_dump() for g in scim_groups]}
     )
+
+
+# Service Provider Config
 
 
 @app.get("/ServiceProviderConfig")

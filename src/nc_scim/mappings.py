@@ -1,5 +1,5 @@
 # from nc_scim.forwarder import UserAPI
-from typing import Any
+from typing import Any, Optional
 
 from scim2_models import Email, Group, GroupMember, GroupMembership, Name, User
 
@@ -9,9 +9,11 @@ from nc_scim.forwarder import GroupAPI
 def user_nc_to_scim(
     nc_user: dict[str, Any],
     attributes: list[str] = [],
-    excluded_attributes: list[str] = [],
+    excluded_attributes: list[str] = ["groups"],
+    all_attributes: Optional[bool] = None,
 ) -> User:
-    all_attributes = not attributes  # if no attributes are passed
+    # if all_attributes == None:
+    #     all_attributes = not attributes  # if no attributes are passed
     scim_user = {}
 
     scim_user["userName"] = nc_user["id"]
@@ -65,9 +67,9 @@ def user_scim_to_nc(scim_user: User) -> dict[str, Any]:
     # website
     # twitter
     nc_user = {
-        "enabled": scim_user.active,
-        "id": scim_user.user_name,
-        "displayname": scim_user.display_name,
+        # "enabled": scim_user.active,
+        "user_id": scim_user.user_name,
+        "display_name": scim_user.display_name,
         "email": e[0].value if (e := scim_user.emails) else None,
     }
     return nc_user

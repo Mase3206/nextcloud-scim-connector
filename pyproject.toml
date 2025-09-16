@@ -32,3 +32,6 @@ indent-style = "space"
 line-ending = "lf"
 skip-magic-trailing-comma = false
 exclude = ["sample/*"]
+
+[tool.ruff.lint]
+select = ["W291"]

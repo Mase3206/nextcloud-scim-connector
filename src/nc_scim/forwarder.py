@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Optional
 
 import requests
 import xmltodict
@@ -16,15 +16,21 @@ def url_assemble(path: str) -> str:
     return f"{protocol}://{NEXTCLOUD_USERNAME}:{NEXTCLOUD_SECRET}@{NEXTCLOUD_BASEURL}{path}"
 
 
-class NCAPIResponseError(requests.exceptions.HTTPError):
-    pass
+class NCAPIResponseError(ValueError):
+    message: str
+    nc_response: NCResponse
+
+    def __init__(self, nc_response: Optional[NCResponse], message: str):
+        super().__init__(message)
+        self.message = message
+        self.nc_response = nc_response  # type:ignore
 
 
 class NCResponse:
     meta: dict[str, str]
     status: str
-    status_string: str
     status_code: int
+    status_codes_mapping: dict[int, str]
     total_items: int
     items_per_page: int
     data: dict[str, Any]
@@ -32,26 +38,30 @@ class NCResponse:
     def __init__(
         self, http_response: requests.Response, status_codes: dict[int, str] = {}
     ):
-        self.raw_response = http_response
-        self.raw_response.raise_for_status()
-        self.raw_data = xmltodict.parse(
-            str(self.raw_response.content, encoding="utf-8")
-        )["ocs"]
+        # self.raw_response = http_response
+        http_response.raise_for_status()
+        # fmt: off
+        self.raw_data = xmltodict.parse(str(
+            http_response.content,
+            encoding="utf-8"
+        ))["ocs"]
+        # fmt: on
 
         self.data: dict[str, Any] = NCResponse._unwrap_element_key(
             self.raw_data["data"]
         )
-        if not self.data:
-            raise NCAPIResponseError("No data returned.")
+        # if not self.data:
+        #     raise NCAPIResponseError(self, "No data returned.")
         self.meta = self.raw_data["meta"]
         self.status = self.meta.get("status", "")
         self.status_code = int(self.meta.get("statuscode", 0))
+        self.status_codes_mapping = status_codes
         self.message = self.meta.get("message", "")
         self.total_items = (
-            int(v) if (v := self.meta.get("totalitems", 0)) != None else 0
+            int(v) if (v := self.meta.get("totalitems", 0)) is not None else 0
         )
         self.items_per_page = (
-            int(v) if (v := self.meta.get("itemsperpage", 0)) != None else 0
+            int(v) if (v := self.meta.get("itemsperpage", 0)) is not None else 0
         )
 
     # Thanks, Copilot!
@@ -73,8 +83,22 @@ class NCResponse:
             return obj
 
     def raise_for_ncapi_status(self):
-        if self.meta["statuscode"] != 100:
-            raise requests.exceptions.HTTPError(response=self.raw_response)
+        if self.status_code != 100:
+            # raise requests.exceptions.HTTPError(response=self.raw_response)
+            raise NCAPIResponseError(self, self.status_string)
+
+    @property
+    def status_string(self) -> str:
+        return self.status_codes_mapping.get(self.status_code, "Unknown error")
+
+    def serialize(self) -> dict:
+        # fields = [
+        #     a for a in dir(self)
+        #     if not a.startswith('__')
+        #      and not callable(getattr(self, a))
+        # ]
+        # return { k: getattr(self, k) for k in fields }
+        return self.__dict__
 
 
 class UserAPI:
@@ -93,11 +117,12 @@ class UserAPI:
         user_id: str,
         display_name: str,
         email: str,
-        groups: list[str],
+        groups: list[str] = [],
         password: str = "This is not set by SCIM.",
         subadmin_groups: list[str] = [],
         quota: str = "",
         language: str = "en",
+        enabled: bool = True,
     ) -> tuple[None, NCResponse]:
         r = NCResponse(
             requests.post(
@@ -141,6 +166,7 @@ class UserAPI:
             ),
             status_codes={100: "success"},
         )
+
         return r.data, r
 
     # https://docs.nextcloud.com/server/latest/admin_manual/configuration_user/instruction_set_for_users.html#edit-data-of-a-single-user
@@ -203,20 +229,16 @@ class UserAPI:
     # https://docs.nextcloud.com/server/latest/admin_manual/configuration_user/instruction_set_for_users.html#delete-a-user
     @staticmethod
     def delete(user_id: str) -> tuple[None, NCResponse]:
-        # r = NCResponse(
-        #     requests.delete(
-        #         url_assemble(f'/users/{user_id}'),
-        #         headers=standard_headers
-        #     ),
-        #     status_codes={
-        #         100: 'successful',
-        #         101: 'failure'
-        #     }
-        # )
-        # return None, r
-        raise NotImplementedError(
-            "Deleting users via the SCIM connector and provisioning API is currently considered unsafe and is not supported at this time."
+        r = NCResponse(
+            requests.delete(
+                url_assemble(f"/users/{user_id}"), headers=standard_headers
+            ),
+            status_codes={100: "successful", 101: "failure"},
         )
+        return None, r
+        # raise NotImplementedError(
+        #     "Deleting users via the SCIM connector and provisioning API is currently considered unsafe and is not supported at this time."
+        # )
 
     # https://docs.nextcloud.com/server/latest/admin_manual/configuration_user/instruction_set_for_users.html#get-user-s-groups
     @staticmethod
