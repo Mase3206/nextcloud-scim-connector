@@ -7,6 +7,7 @@ from nc_scim.forwarder import GroupAPI
 def user_nc_to_scim(
         nc_user: dict[str, Any], 
         attributes: list[str] = [],
+        excluded_attributes: list[str] = [],
     ) -> User:
     all_attributes = not attributes  # if no attributes are passed
     scim_user = {}
@@ -15,7 +16,10 @@ def user_nc_to_scim(
     scim_user['id'] = nc_user['id']
     
     # Groups are not given by default, as that is typically how SCIM is implemented.
-    if 'groups' in attributes:
+    if (
+        'groups' in attributes
+        and 'groups' not in excluded_attributes
+    ):
         if (groups := nc_user.get('groups', None)) is None:
             scim_user['groups'] = []
             # pass
@@ -36,23 +40,39 @@ def user_nc_to_scim(
                 ) for g in groups
             ]
 
-    if 'active' in attributes or all_attributes:
+    if (
+        'active' in attributes
+        and 'active' not in excluded_attributes
+        or all_attributes
+    ):
         if (is_active := nc_user.get('enabled', None)) is not None:
             scim_user['active'] = is_active
 
-    if 'emails' in attributes or all_attributes:
+    if (
+        'emails' in attributes
+        and 'emails' not in excluded_attributes
+        or all_attributes
+    ):
         scim_user['emails'] = [Email.model_validate({
             'value': nc_user['email'],
             'type': 'other',
             'primary': True
         })]
 
-    if 'name' in attributes or all_attributes:
+    if (
+        'name' in attributes
+        and 'name' not in excluded_attributes
+        or all_attributes
+    ):
         scim_user['name'] = Name.model_validate({
             'formatted': nc_user['displayname']
         })
 
-    if 'displayName' in attributes or all_attributes:
+    if (
+        'displayName' in attributes
+        and 'displayName' not in excluded_attributes
+        or all_attributes
+    ):
         scim_user['displayName'] = nc_user['displayname']
 
     return User.model_validate(scim_user)
@@ -78,19 +98,27 @@ def user_scim_to_nc(scim_user: User) -> dict[str, Any]:
 
 def group_nc_to_scim(
         nc_group_id: str,
-        attributes: list[str] = []
+        attributes: list[str] = [],
+        excluded_attributes: list[str] = [],
     ) -> Group:
     all_attributes = not attributes  # if no attributes are passed
     scim_group = {}
 
     scim_group['id'] = nc_group_id
 
-    if 'displayName' in attributes or all_attributes:
+    if (
+        'displayName' in attributes
+        and 'displayName' not in excluded_attributes
+        or all_attributes
+    ):
         scim_group['displayName'] = nc_group_id
     
     # Members are not included by default, as doing so requires making a request to Nextcloud for every individual group's members, significantly increasing the request time.
     # Also, SCIM is typically implemented this way.
-    if 'members' in attributes:
+    if (
+        'members' in attributes
+        and 'members' not in excluded_attributes
+    ):
         members, _ = GroupAPI.get_members(nc_group_id)
         if members is None:
             scim_group['members'] = []

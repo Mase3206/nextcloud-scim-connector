@@ -1,7 +1,7 @@
 from fastapi import FastAPI, logger
 from nc_scim.forwarder import UserAPI, GroupAPI
 from nc_scim.mappings import user_nc_to_scim, group_nc_to_scim
-from scim2_models import User, Group, ListResponse
+from scim2_models import User, Group, ListResponse, Sort, ServiceProviderConfig, ETag, Bulk, ChangePassword, Patch, Filter
 import json
 from typing import Optional, Union, List, Annotated
 from fastapi.params import Query, Depends
@@ -39,51 +39,98 @@ app = FastAPI()
 app.add_middleware(QueryStringFlatteningMiddleware)
 
 
-@app.get('/Schemas')
-def get_schemas(): ...
+# @app.get('/Schemas')
+# def get_schemas(): ...
 
 
 @app.get('/Users')
-def get_all_users(attributes: Annotated[list, Query()] = []):
+def get_users(
+    attributes: Annotated[list, Query()] = [],
+    count: Optional[int] = None,
+    excludedAttributes: Annotated[list, Query()] = [],
+    filter: Optional[str] = None, # TODO: need to work on this one
+    # sortBy: str = 'id',
+    # sortOrder: Optional[SearchRequest.SortOrder] = None,
+    startIndex: int = 1,
+):
+    # Get all users
     all_users, _ = UserAPI.get_all()
-    logger.logger.debug(all_users)
 
-    # if not attributes:
-    #     fetch_groups = False
-    # elif 'groups' in attributes:
-    #     fetch_groups = True
-    # else:
-    #     raise NotImplementedError(f'Adding the {type(attributes)} attribute is not supported at this time. Only the "groups" attribute is supported.')
+    # Set dynamic defaults of parameters
+    if not count:
+        count = len(all_users)
+    
 
     scim_users: list[User] = []
-    for u in all_users:
+    for u in all_users[startIndex-1:count]:
         u_data, _ = UserAPI.get(u)
         transformed = user_nc_to_scim(
             u_data,
-            attributes
+            attributes=attributes,
+            excluded_attributes=excludedAttributes
         )
         scim_users.append(transformed)
+
+    # scim_users = list(sorted(
+    #     scim_users,
+    #     key = lambda u: str(getattr(u, sortBy)),
+    #     reverse = (sortOrder == SearchRequest.SortOrder.descending)
+    # ))
     
+
     return ListResponse[User].model_validate({
         'Resources': [u.model_dump() for u in scim_users]
     })
 
 
+
+
+
 @app.get('/Groups')
-def get_all_groups(attributes: Annotated[list, Query()] = []):
+def get_groups(
+    attributes: Annotated[list, Query()] = [],
+    count: Optional[int] = None,
+    excludedAttributes: Annotated[list, Query()] = [],
+    filter: Optional[str] = None, # TODO: need to work on this one
+    # sortBy: str = 'id',
+    # sortOrder: Optional[SearchRequest.SortOrder] = None,
+    startIndex: int = 1,
+):
+    # Get all groups
     all_groups, _ = GroupAPI.get_all()
-    logger.logger.info(attributes)
+
+    # Set dynamic defaults of parameters
+    if not count:
+        count = len(all_groups)
+
 
     scim_groups: list[Group] = [
         group_nc_to_scim(
-            g, 
-            attributes
-        ) for g in all_groups
+            g,
+            attributes=attributes,
+            excluded_attributes=excludedAttributes
+        ) for g in all_groups[startIndex-1:count]
     ]
 
     return ListResponse[Group].model_validate({
         'Resources': [g.model_dump() for g in scim_groups]
     })
+
+
+
+
+@app.get('/ServiceProviderConfig')
+def get_service_provider_config():
+    return ServiceProviderConfig(
+        sort = Sort(supported=False),
+        etag = ETag(supported=False),
+        bulk = Bulk(supported=False),
+        change_password = ChangePassword(supported=False),
+        patch = Patch(supported=False),
+        filter = Filter(supported=False),
+    )
+
+
 
 
 if __name__ == '__main__':
