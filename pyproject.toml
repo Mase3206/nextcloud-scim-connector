@@ -3,9 +3,9 @@ name = "nc-scim"
 version = "0.1.0"
 description = "SCIM connector for Nextcloud"
 authors = [
-    {name = "Mase3206",email = "35052448+Mase3206@users.noreply.github.com"}
+    { name = "Mase3206",email = "35052448+Mase3206@users.noreply.github.com" }
 ]
-license = {text = "AGPL-3.0"}
+license = { text = "AGPL-3.0" }
 readme = "README.md"
 requires-python = ">3.13,<4.0"
 dependencies = [
@@ -20,3 +20,15 @@ dependencies = [
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.group.dev.dependencies]
+ruff = "^0.13.0"
+isort = "^6.0.1"
+
+# Misc settings
+[tool.ruff.format]
+docstring-code-format = true
+indent-style = "space"
+line-ending = "lf"
+skip-magic-trailing-comma = false
+exclude = ["sample/*"]
