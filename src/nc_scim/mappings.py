@@ -1,15 +1,21 @@
 # from nc_scim.forwarder import UserAPI
-from scim2_models import User as ScimUser, Name, GroupMembership, Email
+from scim2_models import User, Group, Name, GroupMembership, Email, GroupMember
 from typing import Optional, Any
+from nc_scim.forwarder import GroupAPI
 
 
-def transform_nc_user_to_scim(nc_user: dict[str, Any], minimal: bool = False, attach_groups: bool = False) -> ScimUser:
+def user_nc_to_scim(
+        nc_user: dict[str, Any], 
+        attributes: list[str] = [],
+    ) -> User:
+    all_attributes = not attributes  # if no attributes are passed
     scim_user = {}
 
     scim_user['userName'] = nc_user['id']
     scim_user['id'] = nc_user['id']
     
-    if attach_groups:
+    # Groups are not given by default, as that is typically how SCIM is implemented.
+    if 'groups' in attributes:
         if (groups := nc_user.get('groups', None)) is None:
             scim_user['groups'] = []
             # pass
@@ -30,25 +36,29 @@ def transform_nc_user_to_scim(nc_user: dict[str, Any], minimal: bool = False, at
                 ) for g in groups
             ]
 
-    if not minimal:
+    if 'active' in attributes or all_attributes:
         if (is_active := nc_user.get('enabled', None)) is not None:
             scim_user['active'] = is_active
 
+    if 'emails' in attributes or all_attributes:
         scim_user['emails'] = [Email.model_validate({
             'value': nc_user['email'],
             'type': 'other',
             'primary': True
         })]
 
+    if 'name' in attributes or all_attributes:
         scim_user['name'] = Name.model_validate({
             'formatted': nc_user['displayname']
         })
+
+    if 'displayName' in attributes or all_attributes:
         scim_user['displayName'] = nc_user['displayname']
 
-    return ScimUser.model_validate(scim_user)
+    return User.model_validate(scim_user)
     
 
-def transform_scim_user_to_nc(scim_user: ScimUser) -> dict[str, Any]:
+def user_scim_to_nc(scim_user: User) -> dict[str, Any]:
     # Editable fields
     # displayname
     # email
@@ -66,18 +76,53 @@ def transform_scim_user_to_nc(scim_user: ScimUser) -> dict[str, Any]:
 
 
 
+def group_nc_to_scim(
+        nc_group_id: str,
+        attributes: list[str] = []
+    ) -> Group:
+    all_attributes = not attributes  # if no attributes are passed
+    scim_group = {}
+
+    scim_group['id'] = nc_group_id
+
+    if 'displayName' in attributes or all_attributes:
+        scim_group['displayName'] = nc_group_id
+    
+    # Members are not included by default, as doing so requires making a request to Nextcloud for every individual group's members, significantly increasing the request time.
+    # Also, SCIM is typically implemented this way.
+    if 'members' in attributes:
+        members, _ = GroupAPI.get_members(nc_group_id)
+        if members is None:
+            scim_group['members'] = []
+        elif isinstance(members, str):
+            scim_group['groups'] = [GroupMember.model_validate(
+                { 'value': members }
+            )]
+        elif isinstance(members, list):
+            scim_group['members'] = [
+                GroupMember.model_validate(
+                    { 'value': m }
+                ) for m in members
+            ]
+    
+    return Group.model_validate(scim_group)
+
+
+
+
 if __name__ == '__main__':
     import json
-    from pathlib import Path
+    # from pathlib import Path
     
-    with open(Path('.').resolve() / 'sample' / 'users.json', 'r') as f:
-        sample_data: dict[str, list[dict[str, Any]]] = json.load(f)
+    # with open(Path('.').resolve() / 'sample' / 'users.json', 'r') as f:
+    #     sample_data: dict[str, list[dict[str, Any]]] = json.load(f)
     
-    nc_users = sample_data['users']
-    scim_users: list[ScimUser] = []
-    for u in nc_users:
-        scim_users.append(transform_nc_user_to_scim(u))
+    # nc_users = sample_data['users']
+    # scim_users: list[User] = []
+    # for u in nc_users:
+    #     scim_users.append(user_nc_to_scim(u))
 
-    for u in scim_users:
-        print(json.dumps(u.model_dump(), indent=2))
-        print(json.dumps(transform_scim_user_to_nc(u), indent=2), end='\n\n')
+    # for u in scim_users:
+    #     print(json.dumps(u.model_dump(), indent=2))
+    #     print(json.dumps(user_scim_to_nc(u), indent=2), end='\n\n')
+    print(json.dumps(group_nc_to_scim('App Admins', attributes=['displayName']).model_dump(), indent=2))

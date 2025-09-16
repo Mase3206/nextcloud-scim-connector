@@ -363,4 +363,5 @@ class GroupAPI:
 
 
 if __name__ == '__main__':
-    print(UserAPI.add_to_group('nroberts', 'wow'))
+    import json
+    print(json.dumps(GroupAPI.get_all()[0], indent=2))
