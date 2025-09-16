@@ -1,45 +1,49 @@
 # from nc_scim.forwarder import UserAPI
-from scim2_models import User as ScimUser, Name, GroupMembership
+from scim2_models import User as ScimUser, Name, GroupMembership, Email
 from typing import Optional, Any
 
 
-def transform_nc_user_to_scim(nc_user: dict[str, Any]) -> ScimUser:
+def transform_nc_user_to_scim(nc_user: dict[str, Any], minimal: bool = False, attach_groups: bool = False) -> ScimUser:
     scim_user = {}
 
-    if (is_active := nc_user.get('enabled', None)) is not None:
-        scim_user['active'] = is_active
-
     scim_user['userName'] = nc_user['id']
+    scim_user['id'] = nc_user['id']
     
-    if (groups := nc_user.get('groups', None)) is None:
-        scim_user['groups'] = []
-    elif isinstance(groups, str):
-        scim_user['groups'] = [GroupMembership(
-            display=groups, 
-            type='direct', 
-            value=groups,
-            ref=None
-        )]
-    elif isinstance(groups, list):
-        scim_user['groups'] = [
-            GroupMembership(
-                display=g,
-                type='direct',
-                value=g,
+    if attach_groups:
+        if (groups := nc_user.get('groups', None)) is None:
+            scim_user['groups'] = []
+            # pass
+        elif isinstance(groups, str):
+            scim_user['groups'] = [GroupMembership(
+                display=groups, 
+                type='direct', 
+                value=groups,
                 ref=None
-            ) for g in groups
-        ]
+            )]
+        elif isinstance(groups, list):
+            scim_user['groups'] = [
+                GroupMembership(
+                    display=g,
+                    type='direct',
+                    value=g,
+                    ref=None
+                ) for g in groups
+            ]
 
-    scim_user['emails'] = [{
-        'value': nc_user['email'],
-        'type': 'other',
-        'primary': True
-    }]
+    if not minimal:
+        if (is_active := nc_user.get('enabled', None)) is not None:
+            scim_user['active'] = is_active
 
-    scim_user['name'] = {
-        'formatted': nc_user['displayname']
-    }
-    scim_user['displayName'] = nc_user['displayname']
+        scim_user['emails'] = [Email.model_validate({
+            'value': nc_user['email'],
+            'type': 'other',
+            'primary': True
+        })]
+
+        scim_user['name'] = Name.model_validate({
+            'formatted': nc_user['displayname']
+        })
+        scim_user['displayName'] = nc_user['displayname']
 
     return ScimUser.model_validate(scim_user)
     
