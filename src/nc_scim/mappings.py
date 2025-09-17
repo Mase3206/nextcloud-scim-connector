@@ -95,7 +95,8 @@ def group_nc_to_scim(
     # Members are not included by default, as doing so requires making a request to Nextcloud for every individual group's members, significantly increasing the request time.
     # Also, SCIM is typically implemented this way.
     if "members" in attributes and "members" not in excluded_attributes:
-        members, _ = GroupAPI.get_members(nc_group_id)
+        members, r = GroupAPI.get_members(nc_group_id)
+        r.raise_for_ncapi_status()
         if members is None:
             scim_group["members"] = []
         elif isinstance(members, str):

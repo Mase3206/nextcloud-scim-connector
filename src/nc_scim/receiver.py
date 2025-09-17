@@ -13,6 +13,7 @@ from scim2_models import (
     Group,
     ListResponse,
     Patch,
+    PatchOp,
     ServiceProviderConfig,
     Sort,
     User,
@@ -40,13 +41,13 @@ class QueryStringFlatteningMiddleware:
                 flattened[name] = all_values
 
             # doseq: Turn lists into repeated parameters, which is better for FastAPI
-            scope["query_string"] = encode_query_string(flattened, doseq=True).encode(
-                "utf-8"
-            )
+            # fmt: off
+            scope["query_string"] = encode_query_string(flattened, doseq=True).encode("utf-8")
+            # fmt: on
 
-            await self.app(scope, receive, send)
-        else:
-            await self.app(scope, receive, send)
+        #     await self.app(scope, receive, send)
+        # else:
+        await self.app(scope, receive, send)
 
 
 app = FastAPI()
@@ -172,7 +173,7 @@ def get_groups(
     startIndex: int = 1,
 ):
     # Get all groups
-    all_groups, _ = GroupAPI.get_all()
+    all_groups, _ = GroupAPI.get()
 
     # Set dynamic defaults of parameters
     if not count:
@@ -190,6 +191,49 @@ def get_groups(
     )
 
 
+@app.get("/Groups/{group_id}")
+def get_group_by_id(
+    group_id: str,
+    attributes: Annotated[list, Query()] = ["members"],
+    excludedAttributes: Annotated[list, Query()] = [],
+):
+    d = GroupAPI.get_members(group_id)
+    d[1].raise_for_ncapi_status()
+
+    scim_group = group_nc_to_scim(
+        group_id, attributes=attributes, excluded_attributes=excludedAttributes
+    )
+
+    return Group.model_validate(scim_group)
+
+
+@app.patch("/Groups/{group_id}")
+def add_users_to_group(group_id: str, data: PatchOp[Group]):
+    assert data.operations is not None, "No operations given"
+    assert data.operations[0].value is not None, "No users given"
+    _users_raw: list[dict[str, str]] = data.operations[0].value
+
+    try:
+        for user in _users_raw:
+            d, r = UserAPI.add_to_group(user["value"], group_id)
+            r.raise_for_ncapi_status()
+            # if not r.data:
+            #     raise NCAPIResponseError(r, 'no data')
+    except NCAPIResponseError as e:
+        # raise e
+        match e.nc_response.status_code:
+            case 101:
+                return JSONResponse(status_code=400, content={"message": e.message})
+            case 102, 103:
+                return JSONResponse(status_code=404, content={"message": e.message})
+            case 104:
+                return JSONResponse(status_code=403, content={"message": e.message})
+            case 105, _:
+                return JSONResponse(status_code=500, content={"message": e.message})
+
+    return Response(status_code=200)
+
+
 # Service Provider Config
 
 
@@ -200,13 +244,13 @@ def get_service_provider_config():
         etag=ETag(supported=False),
         bulk=Bulk(supported=False),
         change_password=ChangePassword(supported=False),
-        patch=Patch(supported=False),
+        patch=Patch(supported=True),
         filter=Filter(supported=False),
     )
 
 
 if __name__ == "__main__":
-    all_groups, _ = GroupAPI.get_all()
+    all_groups, _ = GroupAPI.get()
     print(
         [
             {

@@ -41,10 +41,11 @@ class NCResponse:
         # self.raw_response = http_response
         http_response.raise_for_status()
         # fmt: off
-        self.raw_data = xmltodict.parse(str(
-            http_response.content,
-            encoding="utf-8"
-        ))["ocs"]
+        # self.raw_data = xmltodict.parse(str(
+        #     http_response.content,
+        #     encoding="utf-8"
+        # ))["ocs"]
+        self.raw_data = xmltodict.parse(http_response.text)["ocs"]
         # fmt: on
 
         self.data: dict[str, Any] = NCResponse._unwrap_element_key(
@@ -251,7 +252,7 @@ class UserAPI:
     def add_to_group(user_id: str, group_id: str) -> tuple[None, NCResponse]:
         r = NCResponse(
             requests.post(
-                url_assemble(f"/user/{user_id}/groups"),
+                url_assemble(f"/users/{user_id}/groups"),
                 headers=post_headers,
                 data={"groupid": group_id},
             ),
@@ -271,7 +272,7 @@ class UserAPI:
     def remove_from_group(user_id: str, group_id: str) -> tuple[None, NCResponse]:
         r = NCResponse(
             requests.delete(
-                url_assemble(f"/user/{user_id}/groups"),
+                url_assemble(f"/users/{user_id}/groups"),
                 headers=post_headers,
                 params={"groupid": group_id},
             ),
@@ -290,9 +291,17 @@ class UserAPI:
 class GroupAPI:
     # https://docs.nextcloud.com/server/latest/admin_manual/configuration_user/instruction_set_for_groups.html#search-get-groups
     @staticmethod
-    def get_all() -> tuple[list[str], NCResponse]:
+    def get(group_id: Optional[str] = None) -> tuple[list[str], NCResponse]:
         r = NCResponse(
-            requests.get(url_assemble("/groups"), headers=standard_headers),
+            (
+                requests.get(url_assemble("/groups"), headers=standard_headers)
+                if not group_id
+                else requests.get(
+                    url_assemble("/groups"),
+                    headers=standard_headers,
+                    params={"search": group_id},
+                )
+            ),
             status_codes={100: "success"},
         )
         return r.data["groups"], r
@@ -369,4 +378,4 @@ class GroupAPI:
 if __name__ == "__main__":
     import json
 
-    print(json.dumps(GroupAPI.get_all()[0], indent=2))
+    print(json.dumps(GroupAPI.get()[0], indent=2))
