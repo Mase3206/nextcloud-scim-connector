@@ -6,6 +6,9 @@ SCIM connector for Nextcloud
 - [x] Add user to group
 - [x] Remove user from group
 - [ ] Update user attribute — [PATCH /Users](https://scim.dev/playground/users.html#update-attribute)
+- [ ] Handle multiple patch operations at once
+    - [ ] PATCH /Users
+    - [ ] PATCH /Groups
 - [ ] HTTP Bearer authentication — [potentially helpful StackOverflow thread](https://stackoverflow.com/questions/76867554/fastapi-how-to-access-bearer-token)
 - [ ] Set user backend in Nextcloud when creating users
     - [ ] Verify that the backend can even be set via the NC API
