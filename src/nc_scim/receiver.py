@@ -50,6 +50,27 @@ class QueryStringFlatteningMiddleware:
         await self.app(scope, receive, send)
 
 
+# Helper functions
+def select_path_attr_last_parent(obj: User | Group, path_parts: list[str]):
+    """
+    Return the last parent in the given path.
+
+    Examples
+    --------
+    - Object: User
+    - Given path: `name.givenName`
+    - Last parent: `name`
+    """
+
+    if len(path_parts) == 1:
+        return obj
+
+    last_parent = getattr(obj, path_parts[0])
+    children = path_parts[1:]
+
+    return select_path_attr_last_parent(last_parent, children)
+
+
 app = FastAPI()
 app.add_middleware(QueryStringFlatteningMiddleware)
 
@@ -157,6 +178,53 @@ def delete_user(user_id: str):
                 },
             )
     return Response(status_code=204)
+
+
+# TODO - finish this!!!
+@app.patch("/Users/{user_id}")
+def update_user_attributes(user_id: str, data: PatchOp[User]):
+    assert data.operations is not None, "No operations given"
+    assert data.operations[0].value is not None, "No users given"
+
+    match (patch_op := data.operations[0]).op:
+        case "replace":
+            assert patch_op.path is not None, "No path given"
+            path_parts = patch_op.path.split(".")
+
+            user_data, r = UserAPI.get(user_id)
+            try:
+                r.raise_for_ncapi_status()
+            except NCAPIResponseError as e:
+                return JSONResponse(
+                    status_code=400, content={"message": e.nc_response.status_string}
+                )
+
+            scim_user = user_nc_to_scim(user_data, all_attributes=True)
+
+            last_parent = select_path_attr_last_parent(scim_user, path_parts)
+
+            return JSONResponse(
+                content={
+                    "message": "testing",
+                    "operation": patch_op.op,
+                    "path": patch_op.path,
+                    "path_parts": path_parts,
+                    "user_id": user_id,
+                    "user_data": user_data,
+                    "scim_user": scim_user.model_dump(),
+                    "last_parent": last_parent.model_dump(),
+                    "field_to_update": getattr(last_parent, path_parts[-1]),
+                    "value_to_set": patch_op.value,
+                }
+            )
+
+        case _:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "message": "Only the `replace` operation is implemented on PATCH /Users at this time."
+                },
+            )
 
 
 # Groups

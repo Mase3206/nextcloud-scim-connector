@@ -36,7 +36,7 @@ def user_nc_to_scim(
 
     if "active" in attributes and "active" not in excluded_attributes or all_attributes:
         if (is_active := nc_user.get("enabled", None)) is not None:
-            scim_user["active"] = is_active
+            scim_user["active"] = bool(int(is_active))
 
     if "emails" in attributes and "emails" not in excluded_attributes or all_attributes:
         scim_user["emails"] = [
