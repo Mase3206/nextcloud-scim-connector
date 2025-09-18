@@ -114,7 +114,7 @@ def get_user_by_id(
 def create_user(data: User):
     nc_user = user_scim_to_nc(data)
     try:
-        UserAPI.new(**nc_user)
+        UserAPI.new(**nc_user)[1].raise_for_ncapi_status()
     except NCAPIResponseError as e:
         if e.nc_response.status_code == 102:
             return JSONResponse(
@@ -213,23 +213,71 @@ def add_users_to_group(group_id: str, data: PatchOp[Group]):
     assert data.operations[0].value is not None, "No users given"
     _users_raw: list[dict[str, str]] = data.operations[0].value
 
-    try:
-        for user in _users_raw:
-            d, r = UserAPI.add_to_group(user["value"], group_id)
-            r.raise_for_ncapi_status()
-            # if not r.data:
-            #     raise NCAPIResponseError(r, 'no data')
-    except NCAPIResponseError as e:
-        # raise e
-        match e.nc_response.status_code:
-            case 101:
-                return JSONResponse(status_code=400, content={"message": e.message})
-            case 102, 103:
-                return JSONResponse(status_code=404, content={"message": e.message})
-            case 104:
-                return JSONResponse(status_code=403, content={"message": e.message})
-            case 105, _:
-                return JSONResponse(status_code=500, content={"message": e.message})
+    if data.operations[0].path != "members":
+        return JSONResponse(
+            status_code=400,
+            content={
+                "message": "Only patching group membership is implemented at this time."
+            },
+        )
+
+    match data.operations[0].op:
+        case "add":
+            try:
+                for user in _users_raw:
+                    d, r = UserAPI.add_to_group(user["value"], group_id)
+                    r.raise_for_ncapi_status()
+                    # if not r.data:
+                    #     raise NCAPIResponseError(r, 'no data')
+            except NCAPIResponseError as e:
+                # raise e
+                match e.nc_response.status_code:
+                    case 101:
+                        return JSONResponse(
+                            status_code=400, content={"message": e.message}
+                        )
+                    case 102, 103:
+                        return JSONResponse(
+                            status_code=404, content={"message": e.message}
+                        )
+                    case 104:
+                        return JSONResponse(
+                            status_code=403, content={"message": e.message}
+                        )
+                    case 105, _:
+                        return JSONResponse(
+                            status_code=500, content={"message": e.message}
+                        )
+        case "remove":
+            try:
+                for user in _users_raw:
+                    d, r = UserAPI.remove_from_group(user["value"], group_id)
+                    r.raise_for_ncapi_status()
+            except NCAPIResponseError as e:
+                match e.nc_response.status_code:
+                    case 101:
+                        return JSONResponse(
+                            status_code=400, content={"message": e.message}
+                        )
+                    case 102, 103:
+                        return JSONResponse(
+                            status_code=404, content={"message": e.message}
+                        )
+                    case 104:
+                        return JSONResponse(
+                            status_code=403, content={"message": e.message}
+                        )
+                    case 105, _:
+                        return JSONResponse(
+                            status_code=500, content={"message": e.message}
+                        )
+        case _:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "message": f"Unimplemented operation '{data.operations[0].op}'"
+                },
+            )
 
     return Response(status_code=200)
 
@@ -249,19 +297,28 @@ def get_service_provider_config():
     )
 
 
-if __name__ == "__main__":
-    all_groups, _ = GroupAPI.get()
-    print(
-        [
-            {
-                "displayName": g,
-                "id": g,
-                "members": [
-                    {"value": member, "display": member}
-                    for member in GroupAPI.get_members(g)[0]
-                ],
-            }
-            for g in all_groups
-        ]
+@app.get("/Me")
+@app.put("/Me")
+@app.patch("/Me")
+def me_unimplemented():
+    return JSONResponse(
+        status_code=404, content={"message": "The '/Me' endpoint is not implemented."}
     )
-    # print(GroupAPI.get_members('Standard Users')[0])
+
+
+# if __name__ == "__main__":
+#     all_groups, _ = GroupAPI.get()
+#     print(
+#         [
+#             {
+#                 "displayName": g,
+#                 "id": g,
+#                 "members": [
+#                     {"value": member, "display": member}
+#                     for member in GroupAPI.get_members(g)[0]
+#                 ],
+#             }
+#             for g in all_groups
+#         ]
+#     )
+#     print(GroupAPI.get_members('Standard Users')[0])
