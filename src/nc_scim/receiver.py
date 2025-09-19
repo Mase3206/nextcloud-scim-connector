@@ -20,7 +20,7 @@ from scim2_models import (
 )
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from nc_scim.forwarder import GroupAPI, NCAPIResponseError, UserAPI
+from nc_scim.forwarder import GroupAPI, NCJSONResponse, UserAPI
 from nc_scim.mappings import group_nc_to_scim, user_nc_to_scim, user_scim_to_nc
 
 
@@ -115,12 +115,11 @@ def get_user_by_id(
     excludedAttributes: Annotated[list, Query()] = [],
 ):
     """Get the user with the specified user ID."""
-    user, _ = UserAPI.get(user_id)
-    if user is None:
-        return JSONResponse(
-            status_code=404, content={"message": f"User '{user_id}' does not exist."}
-        )
-    # return PlainTextResponse(f'"{user == None}"')
+    user, r = UserAPI.get(user_id)
+
+    if r.status.is_error:
+        return NCJSONResponse(r.status)
+
     return User.model_validate(
         user_nc_to_scim(
             user,
@@ -134,97 +133,70 @@ def get_user_by_id(
 @app.post("/Users")
 def create_user(data: User):
     nc_user = user_scim_to_nc(data)
-    try:
-        UserAPI.new(**nc_user)[1].raise_for_ncapi_status()
-    except NCAPIResponseError as e:
-        if e.nc_response.status_code == 102:
-            return JSONResponse(
-                status_code=409,
-                content={
-                    "message": f"User '{nc_user['user_id']}' already exists",
-                    "nc_status_code": e.nc_response.status_code,
-                },
-            )
-        elif e.nc_response.status_code >= 101 and e.nc_response.status_code <= 111:
-            return JSONResponse(
-                status_code=400,
-                content={
-                    "message": e.message,
-                    "nc_status_code": e.nc_response.status_code,
-                },
-            )
+    d, r = UserAPI.new(**nc_user)
+
+    if r.status.is_error:
+        return NCJSONResponse(r.status)
+
     return Response(status_code=201)
 
 
 @app.delete("/Users/{user_id}")
 def delete_user(user_id: str):
-    try:
-        UserAPI.delete(user_id)[1].raise_for_ncapi_status()
-    except NCAPIResponseError as e:
-        if e.nc_response.status_code == 998:
-            return JSONResponse(
-                status_code=404,
-                content={
-                    "message": f"User '{user_id}' does not exist",
-                    "nc_status_code": e.nc_response.status_code,
-                },
-            )
-        else:
-            return JSONResponse(
-                status_code=500,
-                content={
-                    "message": "Unknown error",
-                    "nc_response": e.nc_response.serialize(),
-                },
-            )
+    # try:
+    d, r = UserAPI.delete(user_id)
+
+    if r.status.is_error:
+        return NCJSONResponse(r.status)
+
     return Response(status_code=204)
 
 
 # TODO - finish this!!!
-@app.patch("/Users/{user_id}")
-def update_user_attributes(user_id: str, data: PatchOp[User]):
-    assert data.operations is not None, "No operations given"
-    assert data.operations[0].value is not None, "No users given"
+# @app.patch("/Users/{user_id}")
+# def update_user_attributes(user_id: str, data: PatchOp[User]):
+#     assert data.operations is not None, "No operations given"
+#     assert data.operations[0].value is not None, "No users given"
 
-    match (patch_op := data.operations[0]).op:
-        case "replace":
-            assert patch_op.path is not None, "No path given"
-            path_parts = patch_op.path.split(".")
+#     match (patch_op := data.operations[0]).op:
+#         case "replace":
+#             assert patch_op.path is not None, "No path given"
+#             path_parts = patch_op.path.split(".")
 
-            user_data, r = UserAPI.get(user_id)
-            try:
-                r.raise_for_ncapi_status()
-            except NCAPIResponseError as e:
-                return JSONResponse(
-                    status_code=400, content={"message": e.nc_response.status_string}
-                )
+#             user_data, r = UserAPI.get(user_id)
+#             try:
+#                 r.raise_for_ncapi_status()
+#             except NcApiResponseError as e:
+#                 return JSONResponse(
+#                     status_code=400, content={"message": e.nc_response.status_string}
+#                 )
 
-            scim_user = user_nc_to_scim(user_data, all_attributes=True)
+#             scim_user = user_nc_to_scim(user_data, all_attributes=True)
 
-            last_parent = select_path_attr_last_parent(scim_user, path_parts)
+#             last_parent = select_path_attr_last_parent(scim_user, path_parts)
 
-            return JSONResponse(
-                content={
-                    "message": "testing",
-                    "operation": patch_op.op,
-                    "path": patch_op.path,
-                    "path_parts": path_parts,
-                    "user_id": user_id,
-                    "user_data": user_data,
-                    "scim_user": scim_user.model_dump(),
-                    "last_parent": last_parent.model_dump(),
-                    "field_to_update": getattr(last_parent, path_parts[-1]),
-                    "value_to_set": patch_op.value,
-                }
-            )
+#             return JSONResponse(
+#                 content={
+#                     "message": "testing",
+#                     "operation": patch_op.op,
+#                     "path": patch_op.path,
+#                     "path_parts": path_parts,
+#                     "user_id": user_id,
+#                     "user_data": user_data,
+#                     "scim_user": scim_user.model_dump(),
+#                     "last_parent": last_parent.model_dump(),
+#                     "field_to_update": getattr(last_parent, path_parts[-1]),
+#                     "value_to_set": patch_op.value,
+#                 }
+#             )
 
-        case _:
-            return JSONResponse(
-                status_code=400,
-                content={
-                    "message": "Only the `replace` operation is implemented on PATCH /Users at this time."
-                },
-            )
+#         case _:
+#             return JSONResponse(
+#                 status_code=400,
+#                 content={
+#                     "message": "Only the `replace` operation is implemented on PATCH /Users at this time."
+#                 },
+#             )
 
 
 # Groups
@@ -265,11 +237,16 @@ def get_group_by_id(
     attributes: Annotated[list, Query()] = ["members"],
     excludedAttributes: Annotated[list, Query()] = [],
 ):
-    d = GroupAPI.get_members(group_id)
-    d[1].raise_for_ncapi_status()
+    if "members" in attributes:
+        members, r = GroupAPI.get_members(group_id)
+        if r.status.is_error:
+            return NCJSONResponse(r.status)
 
     scim_group = group_nc_to_scim(
-        group_id, attributes=attributes, excluded_attributes=excludedAttributes
+        group_id,
+        attributes=attributes,
+        excluded_attributes=excludedAttributes,
+        group_members=members if members else [],
     )
 
     return Group.model_validate(scim_group)
@@ -291,54 +268,18 @@ def add_users_to_group(group_id: str, data: PatchOp[Group]):
 
     match data.operations[0].op:
         case "add":
-            try:
-                for user in _users_raw:
-                    d, r = UserAPI.add_to_group(user["value"], group_id)
-                    r.raise_for_ncapi_status()
-                    # if not r.data:
-                    #     raise NCAPIResponseError(r, 'no data')
-            except NCAPIResponseError as e:
-                # raise e
-                match e.nc_response.status_code:
-                    case 101:
-                        return JSONResponse(
-                            status_code=400, content={"message": e.message}
-                        )
-                    case 102, 103:
-                        return JSONResponse(
-                            status_code=404, content={"message": e.message}
-                        )
-                    case 104:
-                        return JSONResponse(
-                            status_code=403, content={"message": e.message}
-                        )
-                    case 105, _:
-                        return JSONResponse(
-                            status_code=500, content={"message": e.message}
-                        )
+            for user in _users_raw:
+                d, r = UserAPI.add_to_group(user["value"], group_id)
+
+                if r.status.is_error:
+                    return NCJSONResponse(r.status)
+
         case "remove":
-            try:
-                for user in _users_raw:
-                    d, r = UserAPI.remove_from_group(user["value"], group_id)
-                    r.raise_for_ncapi_status()
-            except NCAPIResponseError as e:
-                match e.nc_response.status_code:
-                    case 101:
-                        return JSONResponse(
-                            status_code=400, content={"message": e.message}
-                        )
-                    case 102, 103:
-                        return JSONResponse(
-                            status_code=404, content={"message": e.message}
-                        )
-                    case 104:
-                        return JSONResponse(
-                            status_code=403, content={"message": e.message}
-                        )
-                    case 105, _:
-                        return JSONResponse(
-                            status_code=500, content={"message": e.message}
-                        )
+            for user in _users_raw:
+                d, r = UserAPI.remove_from_group(user["value"], group_id)
+                if r.status.is_error:
+                    return NCJSONResponse(r.status)
+
         case _:
             return JSONResponse(
                 status_code=400,
@@ -347,7 +288,7 @@ def add_users_to_group(group_id: str, data: PatchOp[Group]):
                 },
             )
 
-    return Response(status_code=200)
+    return Response(status_code=204)
 
 
 # Service Provider Config

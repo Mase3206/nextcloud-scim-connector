@@ -1,0 +1,34 @@
+
+ ╔═════════════════════════════════════════╗
+ ║ oOo Ready to start developing 🎉        ║
+ ╚═════════════════════════════════════════╝
+
+ 🚀  Start the Nextcloud server by running
+
+        $ docker compose up -d nextcloud
+
+
+ 💤  Stop it with
+
+        $ docker compose stop nextcloud
+
+
+ 🗑  Fresh install and wipe all data
+
+        $ docker compose down -v
+
+        Note that for performance reasons the server repository has been cloned with
+        --depth=1. To get the full history it is highly recommended to run:
+
+        $ cd workspace/server
+        $ git fetch --unshallow
+        $ git config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*"
+        $ git fetch origin
+
+        This may take some time depending on your internet connection speed.
+
+        You might as well use the script in scripts/download-full-history.sh.
+
+For more details about the individual setup options see
+the README.md file or checkout the repo at
+https://github.com/juliusknorr/nextcloud-docker-dev

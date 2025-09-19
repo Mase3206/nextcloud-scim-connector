@@ -16,3 +16,13 @@ SCIM connector for Nextcloud
         - Creating the custom attribute: [Guide for Entra ID](https://developers.staffbase.com/guides/customattributes-scim/#creating-custom-attributes-in-microsoft-entra-id)
     - [ ] Property mappings in Authentik or other IdP
         - Potential issue with Authentik: [goauthentik/authentik#14202](https://github.com/goauthentik/authentik/issues/14202)
+- [] Testing!! — in progress
+
+
+## Development
+
+The [nextcloud-docker-dev](https://github.com/juliusknorr/nextcloud-docker-dev?tab=readme-ov-file0) container is used for testing.
+
+These are the expected groups. Eventually, this will be configured to automatically add the desired members to the intended groups.
+
+![Group members](assets/group-membership.png)

@@ -3,7 +3,7 @@ from typing import Any, Optional
 
 from scim2_models import Email, Group, GroupMember, GroupMembership, Name, User
 
-from nc_scim.forwarder import GroupAPI
+from nc_scim.forwarder import GroupAPI, NCJSONResponse
 
 
 def user_nc_to_scim(
@@ -79,6 +79,7 @@ def group_nc_to_scim(
     nc_group_id: str,
     attributes: list[str] = [],
     excluded_attributes: list[str] = [],
+    group_members: list[str] = [],
 ) -> Group:
     all_attributes = not attributes  # if no attributes are passed
     scim_group = {}
@@ -95,15 +96,15 @@ def group_nc_to_scim(
     # Members are not included by default, as doing so requires making a request to Nextcloud for every individual group's members, significantly increasing the request time.
     # Also, SCIM is typically implemented this way.
     if "members" in attributes and "members" not in excluded_attributes:
-        members, r = GroupAPI.get_members(nc_group_id)
-        r.raise_for_ncapi_status()
-        if members is None:
+        if group_members is None:
             scim_group["members"] = []
-        elif isinstance(members, str):
-            scim_group["groups"] = [GroupMember.model_validate({"value": members})]
-        elif isinstance(members, list):
+        elif isinstance(group_members, str):
+            scim_group["groups"] = [
+                GroupMember.model_validate({"value": group_members})
+            ]
+        elif isinstance(group_members, list):
             scim_group["members"] = [
-                GroupMember.model_validate({"value": m}) for m in members
+                GroupMember.model_validate({"value": m}) for m in group_members
             ]
 
     return Group.model_validate(scim_group)
