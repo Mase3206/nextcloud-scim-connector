@@ -1,14 +1,17 @@
-test-up:
-	docker compose --file tests/nextcloud-docker-dev/docker-compose.yml up -d nextcloud
+TEST_SECRET="admin"
 
-test-run:
-	-poetry run pytest
+test-build:
+	docker compose -f tests/docker-compose.yml build nextcloud
+
+test-up:
+	docker compose -f tests/docker-compose.yml up --force-recreate -d --wait
+	@echo "Sleeping an additional 10 seconds to allow the users to be created"
+	sleep 10
+	./tests/prep-users-and-groups.sh
 
 test-down:
-	docker compose --file tests/nextcloud-docker-dev/docker-compose.yml down
+	docker compose -f tests/docker-compose.yml down -v
 
 test:
-	$(MAKE) test-up
-	sleep 10
-	-poetry run pytest
 	$(MAKE) test-down
+	act -j pytest

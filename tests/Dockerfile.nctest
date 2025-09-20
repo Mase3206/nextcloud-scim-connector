@@ -1,0 +1,46 @@
+FROM ghcr.io/juliusknorr/nextcloud-dev-php81:latest
+
+# Set these environment variables here instead of in the docker-compose.yml file
+ENV SQL="mysql" \
+    WITH_REDIS="YES" \
+    VIRTUAL_HOST="localhost" \
+    NEXTCLOUD_AUTOINSTALL="YES"
+
+# Temporarily set the working directory to /root to make my life easier
+WORKDIR /root
+
+# RUN git clone https://github.com/juliusknorr/nextcloud-docker-dev --depth 1
+RUN git clone --depth 1 https://github.com/nextcloud/server.git workspace/server --progress 2>&1
+RUN cd workspace/server && git submodule update --init --progress 2>&1
+
+# Install apps
+RUN mkdir -p workspace/server/apps-extra
+RUN git clone --depth 1 https://github.com/nextcloud/viewer.git "workspace/server/apps-extra/viewer" 2>&1
+RUN git clone --depth 1 https://github.com/nextcloud/recommendations.git "workspace/server/apps-extra/recommendations" 2>&1
+RUN git clone --depth 1 https://github.com/nextcloud/files_pdfviewer.git "workspace/server/apps-extra/files_pdfviewer" 2>&1
+RUN git clone --depth 1 https://github.com/nextcloud/profiler.git "workspace/server/apps-extra/profiler" 2>&1
+RUN git clone --depth 1 https://github.com/nextcloud/hmr_enabler.git "workspace/server/apps-extra/hmr_enabler" 2>&1
+RUN git clone --depth 1 https://github.com/nextcloud/circles.git "workspace/server/apps-extra/circles" 2>&1
+
+# Copy the server and apps to the /var/www/html folder
+RUN cp -r workspace/server/* /var/www/html
+RUN cp -r workspace/server/apps-extra/ /var/www/html/apps-extra
+
+WORKDIR /var/www/html
+
+# Remove the remaining files
+RUN rm -rf /root/workspace
+
+# Copy the healthcheck script over
+COPY "./healthcheck.sh" "/root/healthcheck.sh"
+
+# Mark these as writeable
+VOLUME /var/www/html
+VOLUME /var/www/html/apps-writable
+VOLUME /var/www/html/config
+VOLUME /var/www/html/data
+
+# EXPOSE 80
+
+# ENTRYPOINT  ["/usr/local/bin/bootstrap.sh"]
+# CMD ["apache2-foreground"]

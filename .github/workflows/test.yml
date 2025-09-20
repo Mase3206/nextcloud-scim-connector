@@ -1,0 +1,75 @@
+name: Run PyTest against a test Nextcloud server
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Get the code from github
+      uses: actions/checkout@v2
+      with:
+        submodules: false
+
+    - name: Copy tests/test_config.yml into config.yml
+      run: cat tests/test_config.yml > config.yml
+
+    # - name: Bootstrap the Nextcloud dev server
+    #   run: |
+    #     cd tests/nextcloud-docker-dev
+    #     ./bootstrap.sh
+    #     cd ../..
+
+    - name: Start the Nextcloud dev server
+      uses: hoverkraft-tech/compose-action@v2.3.0
+      with:
+        compose-file: ./tests/docker-compose.yml
+        up-flags: '--build --force-recreate -d --wait --wait-timeout 300'
+        down-flags: '-v'
+        services-log-level: info
+        compose-flags: '--progress plain'
+
+    - name: Setup Python 3.13
+      uses: actions/setup-python@v6
+      with:
+        python-version: '3.13'
+
+    - name: Add Poetry to PATH
+      shell: bash
+      run: echo "/root/.local/bin" >> $GITHUB_PATH
+
+    - name: Install poetry
+      uses: abatilo/actions-poetry@v4
+
+    - name: Setup a local virtual environment (if no poetry.toml file)
+      run: |
+        poetry config virtualenvs.create true --local
+        poetry config virtualenvs.in-project true --local
+
+    - uses: actions/cache@v3
+      name: Define a cache for the virtual environment based on the dependencies lock file
+      with:
+        path: ./.venv
+        key: venv-${{ hashFiles('poetry.lock') }}
+
+    - name: Install the project dependencies
+      run: |
+        poetry install
+        poetry install --with=test
+
+    # - name: Make sure the Nextcloud dev server is online (10-second timeout)
+    #   run: |
+    #     curl -L https://raw.githubusercontent.com/nickjj/wait-until/v0.3.0/wait-until -o wait-until
+    #     chmod +x wait-until
+    #     ./wait-until '[[ $(curl -I http://localhost:8080 -o /dev/null -w %{http_code}) -eq 302 ]]' 60
+
+    - name: Create users and add them to groups for testing
+      run: ./tests/prep-users-and-groups.sh
+
+    - name: Run pytest
+      run:  poetry run pytest

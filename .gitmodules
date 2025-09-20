@@ -1,4 +1,0 @@
-[submodule "tests/nextcloud-docker-dev"]
-	path = tests/nextcloud-docker-dev
-	url = https://github.com/juliusknorr/nextcloud-docker-dev
-	ignore = dirty
