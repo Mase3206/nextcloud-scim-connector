@@ -2,7 +2,7 @@ name: Run PyTest against a test Nextcloud server
 on:
   push:
     branches:
-      - main
+      - '*'
   pull_request:
 
 

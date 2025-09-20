@@ -1,5 +1,6 @@
 name: Build and upload Nextcloud test server image
-on: {}
+on:
+  pull_request:
 
 env:
   IMAGE_NAME: nc-scim-test-server
