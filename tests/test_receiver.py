@@ -3,16 +3,8 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 from scim2_models import (
-    Bulk,
-    ChangePassword,
-    ETag,
-    Filter,
     Group,
     ListResponse,
-    Patch,
-    PatchOp,
-    ServiceProviderConfig,
-    Sort,
     User,
 )
 

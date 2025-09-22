@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 import requests
 import xmltodict
 from fastapi.responses import JSONResponse
-from starlette.background import BackgroundTask
 
 from nc_scim import (
     NEXTCLOUD_BASEURL,
@@ -55,7 +54,8 @@ class NCJSONResponse(JSONResponse):
         status_code: NCStatusCode,
     ) -> None:
         super().__init__(
-            status_code=status_code.http, content={"detail": status_code.message}
+            status_code=status_code.http,
+            content={"detail": status_code.message},
         )
 
 
@@ -81,7 +81,7 @@ class NCResponse:
         self.raw_data = xmltodict.parse(http_response.text)["ocs"]
 
         self.data: dict[str, Any] = NCResponse._unwrap_element_key(
-            self.raw_data["data"]
+            self.raw_data["data"],
         )
 
         self.meta = self.raw_data["meta"]
@@ -96,8 +96,7 @@ class NCResponse:
     # Thanks, Copilot!
     @staticmethod
     def _unwrap_element_key(obj, key="element"):
-        """
-        Unwrap the given elemenet (defaults to `element`) in the dictionary.
+        """Unwrap the given elemenet (defaults to `element`) in the dictionary.
 
         Example: `'data': {'users': {'element': ['user1', 'user2']}}` becomes `'data': {'users': ['user1', 'user2']}`
         """
@@ -106,10 +105,9 @@ class NCResponse:
             if list(obj.keys()) == [key]:
                 return NCResponse._unwrap_element_key(obj[key], key)
             return {k: NCResponse._unwrap_element_key(v, key) for k, v in obj.items()}
-        elif isinstance(obj, list):
+        if isinstance(obj, list):
             return [NCResponse._unwrap_element_key(item, key) for item in obj]
-        else:
-            return obj
+        return obj
 
     def serialize(self) -> dict:
         return self.__dict__
@@ -204,7 +202,7 @@ class UserAPI:
         ]
         if key not in valid_fields:
             raise ValueError(
-                f"{key} is not a valid field name. Accepted fields: {', '.join(valid_fields)}"
+                f"{key} is not a valid field name. Accepted fields: {', '.join(valid_fields)}",
             )
 
         # fmt: off
@@ -230,7 +228,8 @@ class UserAPI:
     def disable(user_id: str) -> tuple[None, NCResponse]:
         r = NCResponse(
             requests.put(
-                url_assemble(f"/users/{user_id}/disable"), headers=standard_headers
+                url_assemble(f"/users/{user_id}/disable"),
+                headers=standard_headers,
             ),
             status_code_mapping=[
                 NCStatusCode(100, 200, "successful"),
@@ -244,7 +243,8 @@ class UserAPI:
     def enable(user_id: str) -> tuple[None, NCResponse]:
         r = NCResponse(
             requests.put(
-                url_assemble(f"/users/{user_id}/enable"), headers=standard_headers
+                url_assemble(f"/users/{user_id}/enable"),
+                headers=standard_headers,
             ),
             status_code_mapping=[
                 NCStatusCode(100, 200, "successful"),
@@ -258,7 +258,8 @@ class UserAPI:
     def delete(user_id: str) -> tuple[None, NCResponse]:
         r = NCResponse(
             requests.delete(
-                url_assemble(f"/users/{user_id}"), headers=standard_headers
+                url_assemble(f"/users/{user_id}"),
+                headers=standard_headers,
             ),
             status_code_mapping=[
                 NCStatusCode(100, 200, "successful"),
@@ -321,7 +322,7 @@ class UserAPI:
 class GroupAPI:
     # https://docs.nextcloud.com/server/latest/admin_manual/configuration_user/instruction_set_for_groups.html#search-get-groups
     @staticmethod
-    def get(group_id: Optional[str] = None) -> tuple[list[str], NCResponse]:
+    def get(group_id: str | None = None) -> tuple[list[str], NCResponse]:
         r = NCResponse(
             (
                 requests.get(url_assemble("/groups"), headers=standard_headers)
@@ -364,16 +365,13 @@ class GroupAPI:
                 NCStatusCode(404, 404, "group does not exist"),
             ],
         )
-        if not r.data:
+        if not r.data or not (members := r.data.get("users", [])):
             return [], r
-        elif not (members := r.data.get("users", [])):
-            return [], r
-        elif isinstance(members, str):
+        if isinstance(members, str):
             return [members], r
-        elif isinstance(members, list):
+        if isinstance(members, list):
             return members, r
-        else:
-            raise TypeError("Group members are not of type None, str, or list")
+        raise TypeError("Group members are not of type None, str, or list")
 
     # https://docs.nextcloud.com/server/latest/admin_manual/configuration_user/instruction_set_for_groups.html#edit-data-of-a-single-group
     @staticmethod
@@ -381,7 +379,7 @@ class GroupAPI:
         valid_fields = ["displayname"]
         if key not in valid_fields:
             raise ValueError(
-                f"{key} is not a valid field name. Accepted fields: {', '.join(valid_fields)}"
+                f"{key} is not a valid field name. Accepted fields: {', '.join(valid_fields)}",
             )
 
         r = NCResponse(
@@ -402,7 +400,8 @@ class GroupAPI:
     def delete(group_id: str) -> tuple[None, NCResponse]:
         r = NCResponse(
             requests.delete(
-                url_assemble(f"/groups/{group_id}"), headers=standard_headers
+                url_assemble(f"/groups/{group_id}"),
+                headers=standard_headers,
             ),
             status_code_mapping=[
                 NCStatusCode(100, 200, "successful"),

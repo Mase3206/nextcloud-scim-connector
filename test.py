@@ -68,6 +68,11 @@ update_user_data = json.loads("""{
 #     ).text
 # )
 
+response = requests.post(
+    url="http://localhost:8000/Groups",
+    data=json.dumps({"displayName": "test2"}),
+)
+
 # print(
 #     requests.patch(
 #         url="http://localhost:8000/Groups/Test Group",
@@ -84,10 +89,10 @@ update_user_data = json.loads("""{
 #     ).text
 # )
 
-print(
-    requests.patch(
-        url="http://localhost:8000/Users/testuser2",
-        data=json.dumps(update_user_data),
-        headers={"Content-Type": "application/scim+json"},
-    ).text
-)
+# print(
+#     requests.patch(
+#         url="http://localhost:8000/Users/testuser2",
+#         data=json.dumps(update_user_data),
+#         headers={"Content-Type": "application/scim+json"},
+#     ).text
+# )

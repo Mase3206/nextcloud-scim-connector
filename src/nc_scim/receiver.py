@@ -255,7 +255,7 @@ def delete_group(group_id: str):
 
 
 @app.patch("/Groups/{group_id}")
-def add_users_to_group(group_id: str, data: PatchOp[Group]):
+def update_group_membership(group_id: str, data: PatchOp[Group]):
     assert data.operations is not None, "No operations given"
     assert data.operations[0].value is not None, "No users given"
     _users_raw: list[dict[str, str]] = data.operations[0].value

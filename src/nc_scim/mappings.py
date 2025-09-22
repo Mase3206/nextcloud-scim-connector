@@ -3,8 +3,6 @@ from typing import Any, Optional
 
 from scim2_models import Email, Group, GroupMember, GroupMembership, Name, User
 
-from nc_scim.forwarder import GroupAPI, NCJSONResponse
-
 
 def user_nc_to_scim(
     nc_user: dict[str, Any],
