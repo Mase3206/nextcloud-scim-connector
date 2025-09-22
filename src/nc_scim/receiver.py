@@ -152,7 +152,6 @@ def delete_user(user_id: str):
     return Response(status_code=204)
 
 
-
 # Groups
 
 
@@ -185,12 +184,13 @@ def get_groups(
 
     scim_groups: list[Group] = [
         group_nc_to_scim(
-            gid, attributes=attributes, excluded_attributes=excludedAttributes,
-            group_members=gm
+            gid,
+            attributes=attributes,
+            excluded_attributes=excludedAttributes,
+            group_members=gm,
         )
         for gid, gm in zip(
-            all_groups[startIndex - 1 : count],
-            group_members[startIndex - 1 : count]
+            all_groups[startIndex - 1 : count], group_members[startIndex - 1 : count]
         )
     ]
 
@@ -215,38 +215,43 @@ def get_group_by_id(
         attributes=attributes,
         excluded_attributes=excludedAttributes,
         group_members=members if members else [],
-        all_attributes=True
+        all_attributes=True,
     )
 
     return Group.model_validate(scim_group)
 
 
-@app.post('/Groups')
+@app.post("/Groups")
 def create_group(data: Group):
     if data.display_name is None:
         return JSONResponse(
             status_code=400,
-            content={'message': 'The `displayName` field is required for group creation.'}
+            content={
+                "message": "The `displayName` field is required for group creation."
+            },
         )
-    
+
     d, r = GroupAPI.new(data.display_name)
     if r.status.is_error:
         return NCJSONResponse(r.status)
-    
+
     members, r = GroupAPI.get_members(data.display_name)
     if r.status.is_error:
         return NCJSONResponse(r.status)
 
-
-    group =  Group.model_validate({
-        'displayName': data.display_name,
-        'id': data.display_name,
-        'members': members
-    })
-    return JSONResponse(
-        status_code=201,
-        content = group.model_dump()
+    group = Group.model_validate(
+        {"displayName": data.display_name, "id": data.display_name, "members": members}
     )
+    return JSONResponse(status_code=201, content=group.model_dump())
+
+
+@app.delete("/Groups/{group_id}")
+def delete_group(group_id: str):
+    d, r = GroupAPI.delete(group_id)
+    if r.status.is_error:
+        return NCJSONResponse(r.status)
+
+    return Response(status_code=204)
 
 
 @app.patch("/Groups/{group_id}")
