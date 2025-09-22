@@ -80,8 +80,11 @@ def group_nc_to_scim(
     attributes: list[str] = [],
     excluded_attributes: list[str] = [],
     group_members: list[str] = [],
+    all_attributes: Optional[bool] = None,
 ) -> Group:
-    all_attributes = not attributes  # if no attributes are passed
+    all_attributes = (
+        not attributes if not all_attributes else all_attributes
+    )  # if no attributes are passed and all_attributes isn't passed
     scim_group = {}
 
     scim_group["id"] = nc_group_id
