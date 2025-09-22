@@ -152,52 +152,6 @@ def delete_user(user_id: str):
     return Response(status_code=204)
 
 
-# TODO - finish this!!!
-# @app.patch("/Users/{user_id}")
-# def update_user_attributes(user_id: str, data: PatchOp[User]):
-#     assert data.operations is not None, "No operations given"
-#     assert data.operations[0].value is not None, "No users given"
-
-#     match (patch_op := data.operations[0]).op:
-#         case "replace":
-#             assert patch_op.path is not None, "No path given"
-#             path_parts = patch_op.path.split(".")
-
-#             user_data, r = UserAPI.get(user_id)
-#             try:
-#                 r.raise_for_ncapi_status()
-#             except NcApiResponseError as e:
-#                 return JSONResponse(
-#                     status_code=400, content={"message": e.nc_response.status_string}
-#                 )
-
-#             scim_user = user_nc_to_scim(user_data, all_attributes=True)
-
-#             last_parent = select_path_attr_last_parent(scim_user, path_parts)
-
-#             return JSONResponse(
-#                 content={
-#                     "message": "testing",
-#                     "operation": patch_op.op,
-#                     "path": patch_op.path,
-#                     "path_parts": path_parts,
-#                     "user_id": user_id,
-#                     "user_data": user_data,
-#                     "scim_user": scim_user.model_dump(),
-#                     "last_parent": last_parent.model_dump(),
-#                     "field_to_update": getattr(last_parent, path_parts[-1]),
-#                     "value_to_set": patch_op.value,
-#                 }
-#             )
-
-#         case _:
-#             return JSONResponse(
-#                 status_code=400,
-#                 content={
-#                     "message": "Only the `replace` operation is implemented on PATCH /Users at this time."
-#                 },
-#             )
-
 
 # Groups
 
@@ -214,6 +168,16 @@ def get_groups(
 ):
     # Get all groups
     all_groups, _ = GroupAPI.get()
+    group_members: list[list[str]] = []
+
+    if "members" in attributes:
+        for gid in all_groups:
+            gm, r = GroupAPI.get_members(gid)
+            if r.status.is_error:
+                return NCJSONResponse(r.status)
+            group_members.append(gm)
+    else:
+        group_members = [[]] * len(all_groups)
 
     # Set dynamic defaults of parameters
     if not count:
@@ -221,9 +185,13 @@ def get_groups(
 
     scim_groups: list[Group] = [
         group_nc_to_scim(
-            g, attributes=attributes, excluded_attributes=excludedAttributes
+            gid, attributes=attributes, excluded_attributes=excludedAttributes,
+            group_members=gm
         )
-        for g in all_groups[startIndex - 1 : count]
+        for gid, gm in zip(
+            all_groups[startIndex - 1 : count],
+            group_members[startIndex - 1 : count]
+        )
     ]
 
     return ListResponse[Group].model_validate(
@@ -247,9 +215,38 @@ def get_group_by_id(
         attributes=attributes,
         excluded_attributes=excludedAttributes,
         group_members=members if members else [],
+        all_attributes=True
     )
 
     return Group.model_validate(scim_group)
+
+
+@app.post('/Groups')
+def create_group(data: Group):
+    if data.display_name is None:
+        return JSONResponse(
+            status_code=400,
+            content={'message': 'The `displayName` field is required for group creation.'}
+        )
+    
+    d, r = GroupAPI.new(data.display_name)
+    if r.status.is_error:
+        return NCJSONResponse(r.status)
+    
+    members, r = GroupAPI.get_members(data.display_name)
+    if r.status.is_error:
+        return NCJSONResponse(r.status)
+
+
+    group =  Group.model_validate({
+        'displayName': data.display_name,
+        'id': data.display_name,
+        'members': members
+    })
+    return JSONResponse(
+        status_code=201,
+        content = group.model_dump()
+    )
 
 
 @app.patch("/Groups/{group_id}")
