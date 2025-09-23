@@ -2,7 +2,7 @@ from typing import Annotated, Optional
 from urllib.parse import parse_qs as parse_query_string
 from urllib.parse import urlencode as encode_query_string
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.params import Query
 from fastapi.responses import JSONResponse, Response
 from scim2_models import (
@@ -20,7 +20,7 @@ from scim2_models import (
 )
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from nc_scim.forwarder import GroupAPI, NCJSONResponse, UserAPI
+from nc_scim.forwarder import GroupAPI, UserAPI
 from nc_scim.mappings import group_nc_to_scim, user_nc_to_scim, user_scim_to_nc
 
 
@@ -89,7 +89,7 @@ def get_users(
     startIndex: int = 1,
 ):
     # Get all users
-    all_users, _ = UserAPI.get_all()
+    all_users = UserAPI.get_all()
 
     # Set dynamic defaults of parameters
     if not count:
@@ -97,7 +97,7 @@ def get_users(
 
     scim_users: list[User] = []
     for u in all_users[startIndex - 1 : count]:
-        u_data, _ = UserAPI.get(u)
+        u_data = UserAPI.get(u)
         transformed = user_nc_to_scim(
             u_data, attributes=attributes, excluded_attributes=excludedAttributes
         )
@@ -115,10 +115,7 @@ def get_user_by_id(
     excludedAttributes: Annotated[list, Query()] = [],
 ):
     """Get the user with the specified user ID."""
-    user, r = UserAPI.get(user_id)
-
-    if r.status.is_error:
-        return NCJSONResponse(r.status)
+    user = UserAPI.get(user_id)
 
     return User.model_validate(
         user_nc_to_scim(
@@ -133,22 +130,17 @@ def get_user_by_id(
 @app.post("/Users")
 def create_user(data: User):
     nc_user = user_scim_to_nc(data)
-    d, r = UserAPI.new(**nc_user)
+    UserAPI.new(**nc_user)
 
-    if r.status.is_error:
-        return NCJSONResponse(r.status)
+    # TODO: Currently broken. Actively making an NCUser model to solve this issue (and others like it)
+    new = User.model_validate(user_nc_to_scim(UserAPI.get(nc_user["user_id"])))
 
-    return Response(status_code=201)
+    return JSONResponse(status_code=201, content=new)
 
 
 @app.delete("/Users/{user_id}")
 def delete_user(user_id: str):
-    # try:
-    d, r = UserAPI.delete(user_id)
-
-    if r.status.is_error:
-        return NCJSONResponse(r.status)
-
+    UserAPI.delete(user_id)
     return Response(status_code=204)
 
 
@@ -166,14 +158,12 @@ def get_groups(
     startIndex: int = 1,
 ):
     # Get all groups
-    all_groups, _ = GroupAPI.get()
+    all_groups = GroupAPI.get()
     group_members: list[list[str]] = []
 
     if "members" in attributes:
         for gid in all_groups:
-            gm, r = GroupAPI.get_members(gid)
-            if r.status.is_error:
-                return NCJSONResponse(r.status)
+            gm = GroupAPI.get_members(gid)
             group_members.append(gm)
     else:
         group_members = [[]] * len(all_groups)
@@ -206,9 +196,7 @@ def get_group_by_id(
     excludedAttributes: Annotated[list, Query()] = [],
 ):
     if "members" in attributes:
-        members, r = GroupAPI.get_members(group_id)
-        if r.status.is_error:
-            return NCJSONResponse(r.status)
+        members = GroupAPI.get_members(group_id)
 
     scim_group = group_nc_to_scim(
         group_id,
@@ -231,26 +219,22 @@ def create_group(data: Group):
             },
         )
 
-    d, r = GroupAPI.new(data.display_name)
-    if r.status.is_error:
-        return NCJSONResponse(r.status)
-
-    members, r = GroupAPI.get_members(data.display_name)
-    if r.status.is_error:
-        return NCJSONResponse(r.status)
+    GroupAPI.new(data.display_name)
+    members = GroupAPI.get_members(data.display_name)
 
     group = Group.model_validate(
-        {"displayName": data.display_name, "id": data.display_name, "members": members}
+        {
+            "displayName": data.display_name,
+            "id": data.display_name,
+            "members": members,
+        }
     )
     return JSONResponse(status_code=201, content=group.model_dump())
 
 
 @app.delete("/Groups/{group_id}")
 def delete_group(group_id: str):
-    d, r = GroupAPI.delete(group_id)
-    if r.status.is_error:
-        return NCJSONResponse(r.status)
-
+    GroupAPI.delete(group_id)
     return Response(status_code=204)
 
 
@@ -271,23 +255,16 @@ def update_group_membership(group_id: str, data: PatchOp[Group]):
     match data.operations[0].op:
         case "add":
             for user in _users_raw:
-                d, r = UserAPI.add_to_group(user["value"], group_id)
-
-                if r.status.is_error:
-                    return NCJSONResponse(r.status)
+                UserAPI.add_to_group(user["value"], group_id)
 
         case "remove":
             for user in _users_raw:
-                d, r = UserAPI.remove_from_group(user["value"], group_id)
-                if r.status.is_error:
-                    return NCJSONResponse(r.status)
+                UserAPI.remove_from_group(user["value"], group_id)
 
         case _:
-            return JSONResponse(
+            raise HTTPException(
                 status_code=400,
-                content={
-                    "message": f"Unimplemented operation '{data.operations[0].op}'"
-                },
+                detail=f"Unimplemented operation '{data.operations[0].op}'",
             )
 
     return Response(status_code=204)
@@ -312,8 +289,8 @@ def get_service_provider_config():
 @app.put("/Me")
 @app.patch("/Me")
 def me_unimplemented():
-    return JSONResponse(
-        status_code=404, content={"message": "The '/Me' endpoint is not implemented."}
+    return HTTPException(
+        status_code=404, detail="The '/Me' endpoint is not implemented."
     )
 
 

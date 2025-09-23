@@ -4,7 +4,7 @@ from typing import Any
 
 import requests
 import xmltodict
-from fastapi.responses import JSONResponse
+from fastapi import HTTPException
 
 from nc_scim import (
     NEXTCLOUD_BASEURL,
@@ -48,14 +48,14 @@ class NCStatusCodeMapping:
             return NCStatusCode(0, 500, "Unknown error")
 
 
-class NCJSONResponse(JSONResponse):
+class NCAPIException(HTTPException):
     def __init__(
         self,
         status_code: NCStatusCode,
     ) -> None:
         super().__init__(
             status_code=status_code.http,
-            content={"detail": status_code.message},
+            detail=status_code.message,
         )
 
 
@@ -93,6 +93,10 @@ class NCResponse:
             int(v) if (v := self.meta.get("itemsperpage", 0)) is not None else 0
         )
 
+    def raise_for_status(self):
+        if self.status.is_error:
+            raise NCAPIException(self.status)
+
     # Thanks, Copilot!
     @staticmethod
     def _unwrap_element_key(obj, key="element"):
@@ -116,12 +120,13 @@ class NCResponse:
 class UserAPI:
     # https://docs.nextcloud.com/server/latest/admin_manual/configuration_user/instruction_set_for_users.html#search-get-users
     @staticmethod
-    def get_all() -> tuple[list[str], NCResponse]:
+    def get_all() -> list[str]:
         r = NCResponse(
             requests.get(url_assemble("/users"), headers=standard_headers),
             status_code_mapping=[NCStatusCode(100, 200, "Success")],
         )
-        return r.data["users"], r
+        r.raise_for_status()
+        return r.data["users"]
 
     # https://docs.nextcloud.com/server/latest/admin_manual/configuration_user/instruction_set_for_users.html#add-a-new-user
     @staticmethod
@@ -135,7 +140,7 @@ class UserAPI:
         quota: str = "",
         language: str = "en",
         enabled: bool = True,
-    ) -> tuple[None, NCResponse]:
+    ):
         # fmt: off
         r = NCResponse(
             requests.post(
@@ -168,11 +173,11 @@ class UserAPI:
             ],
         )
         # fmt: on
-        return None, r
+        r.raise_for_status()
 
     # https://docs.nextcloud.com/server/latest/admin_manual/configuration_user/instruction_set_for_users.html#get-data-of-a-single-user
     @staticmethod
-    def get(user_id: str) -> tuple[dict[str, Any], NCResponse]:
+    def get(user_id: str) -> dict[str, Any]:
         r = NCResponse(
             requests.get(
                 url_assemble(f"/users/{user_id}"),
@@ -183,12 +188,13 @@ class UserAPI:
                 NCStatusCode(404, 404, "user does not exist"),
             ],
         )
+        r.raise_for_status()
 
-        return r.data, r
+        return r.data
 
     # https://docs.nextcloud.com/server/latest/admin_manual/configuration_user/instruction_set_for_users.html#edit-data-of-a-single-user
     @staticmethod
-    def update(user_id: str, key: str, value: str) -> tuple[None, NCResponse]:
+    def update(user_id: str, key: str, value: str):
         valid_fields = [
             "email",
             "quota",
@@ -201,8 +207,9 @@ class UserAPI:
             "password",
         ]
         if key not in valid_fields:
-            raise ValueError(
-                f"{key} is not a valid field name. Accepted fields: {', '.join(valid_fields)}",
+            raise HTTPException(
+                status_code=400,
+                detail=f"{key} is not a valid field name. Accepted fields: {', '.join(valid_fields)}",
             )
 
         # fmt: off
@@ -221,11 +228,11 @@ class UserAPI:
             ],
         )
         # fmt: on
-        return None, r
+        r.raise_for_status()
 
     # https://docs.nextcloud.com/server/latest/admin_manual/configuration_user/instruction_set_for_users.html#disable-a-user
     @staticmethod
-    def disable(user_id: str) -> tuple[None, NCResponse]:
+    def disable(user_id: str):
         r = NCResponse(
             requests.put(
                 url_assemble(f"/users/{user_id}/disable"),
@@ -236,11 +243,11 @@ class UserAPI:
                 NCStatusCode(101, 500, "failure"),
             ],
         )
-        return None, r
+        r.raise_for_status()
 
     # https://docs.nextcloud.com/server/latest/admin_manual/configuration_user/instruction_set_for_users.html#enable-a-user
     @staticmethod
-    def enable(user_id: str) -> tuple[None, NCResponse]:
+    def enable(user_id: str):
         r = NCResponse(
             requests.put(
                 url_assemble(f"/users/{user_id}/enable"),
@@ -251,11 +258,11 @@ class UserAPI:
                 NCStatusCode(101, 500, "failure"),
             ],
         )
-        return None, r
+        r.raise_for_status()
 
     # https://docs.nextcloud.com/server/latest/admin_manual/configuration_user/instruction_set_for_users.html#delete-a-user
     @staticmethod
-    def delete(user_id: str) -> tuple[None, NCResponse]:
+    def delete(user_id: str):
         r = NCResponse(
             requests.delete(
                 url_assemble(f"/users/{user_id}"),
@@ -267,7 +274,7 @@ class UserAPI:
                 NCStatusCode(998, 404, "user does not exist"),
             ],
         )
-        return None, r
+        r.raise_for_status()
         # raise NotImplementedError(
         #     "Deleting users via the SCIM connector and provisioning API is currently considered unsafe and is not supported at this time."
         # )
@@ -275,12 +282,12 @@ class UserAPI:
     # https://docs.nextcloud.com/server/latest/admin_manual/configuration_user/instruction_set_for_users.html#get-user-s-groups
     @staticmethod
     def get_groups(user_id: str) -> tuple[list[str], NCResponse]:
-        u, r = UserAPI.get(user_id)
-        return u["groups"], r
+        u = UserAPI.get(user_id)
+        return u["groups"]
 
     # https://docs.nextcloud.com/server/latest/admin_manual/configuration_user/instruction_set_for_users.html#get-user-s-groups
     @staticmethod
-    def add_to_group(user_id: str, group_id: str) -> tuple[None, NCResponse]:
+    def add_to_group(user_id: str, group_id: str):
         r = NCResponse(
             requests.post(
                 url_assemble(f"/users/{user_id}/groups"),
@@ -296,11 +303,11 @@ class UserAPI:
                 NCStatusCode(105, 500, "failed to add user to group"),
             ],
         )
-        return None, r
+        r.raise_for_status()
 
     # https://docs.nextcloud.com/server/latest/admin_manual/configuration_user/instruction_set_for_users.html#remove-user-from-group
     @staticmethod
-    def remove_from_group(user_id: str, group_id: str) -> tuple[None, NCResponse]:
+    def remove_from_group(user_id: str, group_id: str):
         r = NCResponse(
             requests.delete(
                 url_assemble(f"/users/{user_id}/groups"),
@@ -316,13 +323,13 @@ class UserAPI:
                 NCStatusCode(105, 500, "failed to remove user from group"),
             ],
         )
-        return None, r
+        r.raise_for_status()
 
 
 class GroupAPI:
     # https://docs.nextcloud.com/server/latest/admin_manual/configuration_user/instruction_set_for_groups.html#search-get-groups
     @staticmethod
-    def get(group_id: str | None = None) -> tuple[list[str], NCResponse]:
+    def get(group_id: str | None = None) -> list[str]:
         r = NCResponse(
             (
                 requests.get(url_assemble("/groups"), headers=standard_headers)
@@ -335,11 +342,12 @@ class GroupAPI:
             ),
             status_code_mapping=[NCStatusCode(100, 200, "success")],
         )
-        return r.data["groups"], r
+        r.raise_for_status()
+        return r.data["groups"]
 
     # https://docs.nextcloud.com/server/latest/admin_manual/configuration_user/instruction_set_for_groups.html#create-a-group
     @staticmethod
-    def new(group_id: str) -> tuple[None, NCResponse]:
+    def new(group_id: str):
         r = NCResponse(
             requests.post(
                 url_assemble("/groups"),
@@ -353,11 +361,11 @@ class GroupAPI:
                 NCStatusCode(103, 500, "failed to add the group"),
             ],
         )
-        return None, r
+        r.raise_for_status()
 
     # https://docs.nextcloud.com/server/latest/admin_manual/configuration_user/instruction_set_for_groups.html#get-members-of-a-group
     @staticmethod
-    def get_members(group_id: str) -> tuple[list[str], NCResponse]:
+    def get_members(group_id: str) -> list[str]:
         r = NCResponse(
             requests.get(url_assemble(f"/groups/{group_id}"), headers=standard_headers),
             status_code_mapping=[
@@ -365,17 +373,19 @@ class GroupAPI:
                 NCStatusCode(404, 404, "group does not exist"),
             ],
         )
+        r.raise_for_status()
+
         if not r.data or not (members := r.data.get("users", [])):
-            return [], r
+            return []
         if isinstance(members, str):
-            return [members], r
+            return [members]
         if isinstance(members, list):
-            return members, r
+            return members
         raise TypeError("Group members are not of type None, str, or list")
 
     # https://docs.nextcloud.com/server/latest/admin_manual/configuration_user/instruction_set_for_groups.html#edit-data-of-a-single-group
     @staticmethod
-    def update(group_id: str, key: str, value: str) -> tuple[None, NCResponse]:
+    def update(group_id: str, key: str, value: str):
         valid_fields = ["displayname"]
         if key not in valid_fields:
             raise ValueError(
@@ -393,11 +403,11 @@ class GroupAPI:
                 NCStatusCode(101, 500, "not supported by backend"),
             ],
         )
-        return None, r
+        r.raise_for_status()
 
     # https://docs.nextcloud.com/server/latest/admin_manual/configuration_user/instruction_set_for_groups.html#delete-a-group
     @staticmethod
-    def delete(group_id: str) -> tuple[None, NCResponse]:
+    def delete(group_id: str):
         r = NCResponse(
             requests.delete(
                 url_assemble(f"/groups/{group_id}"),
@@ -409,7 +419,7 @@ class GroupAPI:
                 NCStatusCode(102, 500, "failed to delete group"),
             ],
         )
-        return None, r
+        r.raise_for_status()
 
 
 if __name__ == "__main__":
