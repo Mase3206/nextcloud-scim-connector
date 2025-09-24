@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from pydantic import AnyHttpUrl, BaseModel, ByteSize, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ByteSize, ConfigDict, EmailStr, Field
 from pydantic_extra_types.phone_numbers import PhoneNumber
 from scim2_models import Address, Email, GroupMembership, Name
 from scim2_models import PhoneNumber as ScimPhoneNumber
@@ -22,8 +22,6 @@ class NCUser(BaseModel):
     # language: Optional[LanguageAlpha2] = None
     phone: Optional[PhoneNumber] = None
     address: Optional[str] = None
-    website: Optional[AnyHttpUrl] = None
-    twitter: Optional[str] = None
 
     model_config = ConfigDict(validate_by_alias=True, validate_by_name=True)
 
@@ -52,7 +50,7 @@ class NCUser(BaseModel):
                 )
             ],
             "addresses": [Address.model_validate({"formatted": self.address})],
-            "phone": [ScimPhoneNumber.model_validate({"value": self.phone})],
+            "phoneNumbers": [ScimPhoneNumber.model_validate({"value": self.phone})],
         }
 
         return ScimUser.model_validate(scim_user)
@@ -73,9 +71,10 @@ class NCUser(BaseModel):
                 and addr.locality
                 and addr.region
                 and addr.postal_code
+                and addr.country
             ):
                 # Using American formatting here
-                address = f"{addr.street_address}, {addr.locality}, {addr.region}, {addr.postal_code}"
+                address = f"{addr.street_address}, {addr.locality}, {addr.region} {addr.postal_code}, {addr.country}"
             else:
                 address = None
         else:
