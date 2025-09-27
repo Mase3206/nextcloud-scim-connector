@@ -102,9 +102,6 @@ def get_users(
     scim_users: list[ScimUser] = []
     for u in all_users[startIndex - 1 : count]:
         u_data = UserAPI.get(u)
-        # transformed = user_nc_to_scim(
-        #     u_data, attributes=attributes, excluded_attributes=excludedAttributes
-        # )
         scim_users.append(u_data.to_scim())
 
     return ListResponse[ScimUser].model_validate(
@@ -121,25 +118,14 @@ def get_user_by_id(
     """Get the user with the specified user ID."""
     user = UserAPI.get(user_id)
 
-    # return User.model_validate(
-    # user_nc_to_scim(
-    #     user,
-    #     attributes=["groups"] + attributes,
-    #     excluded_attributes=excludedAttributes,
-    #     all_attributes=True,
-    # )
-    # )
     return user.to_scim()
 
 
 @app.post("/Users")
 def create_user(data: ScimUser):
-    # nc_user = user_scim_to_nc(data)
-    # UserAPI.new(**nc_user)
     nc_user = NCUser.from_scim(data)
     UserAPI.new(nc_user)
 
-    # TODO: Currently broken. Actively making an NCUser model to solve this issue (and others like it)
     new = UserAPI.get(nc_user.id).to_scim().model_dump()
 
     return JSONResponse(status_code=201, content=new)
@@ -166,39 +152,17 @@ def get_groups(
 ) -> ListResponse[ScimGroup]:
     # Get all groups
     all_group_ids = GroupAPI.get()
-    # group_members: list[list[str]] = []
 
+    # Set dynamic defaults of parameters
     if not count:
         count = len(all_group_ids)
 
-    # if "members" in attributes:
-    #     for gid in all_groups:
-    #         gm = GroupAPI.get_members(gid)
-    #         group_members.append(gm)
-    # else:
-    #     group_members = [[]] * len(all_groups)
-
-    # # Set dynamic defaults of parameters
-
     nc_groups: list[NCGroup] = [
         NCGroup.model_validate({"groupid": gid, "members": GroupAPI.get_members(gid)})
-        for gid in all_group_ids
+        for gid in all_group_ids[startIndex - 1 : count]
     ]
 
     scim_groups: list[ScimGroup] = [ncg.to_scim() for ncg in nc_groups]
-
-    # scim_groups: list[ScimGroup] = [
-    #     group_nc_to_scim(
-    #         gid,
-    #         attributes=attributes,
-    #         excluded_attributes=excludedAttributes,
-    #         group_members=gm,
-    #     )
-    #     for gid, gm in zip(
-    #         all_groups[startIndex - 1 : count],
-    #         group_members[startIndex - 1 : count],
-    #     )
-    # ]
 
     return ListResponse[ScimGroup].model_validate(
         {"Resources": [g.model_dump() for g in scim_groups]}
@@ -211,17 +175,6 @@ def get_group_by_id(
     # attributes: Annotated[list, Query()] = ["members"],
     # excludedAttributes: Annotated[list, Query()] = [],
 ) -> ScimGroup:
-    # if "members" in attributes:
-    #     members = GroupAPI.get_members(group_id)
-
-    # scim_group = group_nc_to_scim(
-    #     group_id,
-    #     attributes=attributes,
-    #     excluded_attributes=excludedAttributes,
-    #     group_members=members if members else [],
-    #     all_attributes=True,
-    # )
-
     nc_group = NCGroup.model_validate(
         {
             "groupid": group_id,
@@ -230,8 +183,6 @@ def get_group_by_id(
     )
 
     return nc_group.to_scim()
-
-    # return ScimGroup.model_validate(scim_group)
 
 
 @app.post("/Groups")
