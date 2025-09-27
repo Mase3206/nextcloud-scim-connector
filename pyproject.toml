@@ -48,6 +48,8 @@ skip-magic-trailing-comma = false
 select = [
     "W291", "F401", "I"
 ]
+[tool.ruff.lint.isort]
+combine-as-imports = true
 
 
 [tool.pytest.ini_options]

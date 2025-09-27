@@ -11,9 +11,16 @@ from pydantic import (
     ValidationError,
 )
 from pydantic_extra_types.phone_numbers import PhoneNumber
-from scim2_models import Address, Email, GroupMembership, Name
-from scim2_models import PhoneNumber as ScimPhoneNumber
-from scim2_models import User as ScimUser
+from scim2_models import (
+    Address,
+    Email,
+    Group as ScimGroup,
+    GroupMember,
+    GroupMembership,
+    Name,
+    PhoneNumber as ScimPhoneNumber,
+    User as ScimUser,
+)
 
 
 class Quota(BaseModel):
@@ -138,6 +145,32 @@ class NCUser(BaseModel):
         }
 
         return NCUser.model_validate(nc_user)
+
+
+class NCGroup(BaseModel):
+    groupid: str
+    members: Annotated[list[str], BeforeValidator(coerce_to_list)] = []
+
+    def to_scim(self) -> ScimGroup:
+        data = {
+            "id": self.groupid,
+            "displayName": self.groupid,
+            "members": [
+                GroupMember.model_validate({"value": gm}) for gm in self.members
+            ],
+        }
+
+        return ScimGroup.model_validate(data)
+
+    @staticmethod
+    def from_scim(scim_group: ScimGroup) -> NCGroup:
+        group_members = (
+            [g.value for g in scim_group.members] if scim_group.members else []
+        )
+
+        return NCGroup.model_validate(
+            {"groupid": scim_group.id, "members": group_members}
+        )
 
 
 def _tc():
