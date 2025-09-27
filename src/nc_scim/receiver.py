@@ -1,8 +1,10 @@
 from typing import Annotated, Optional
-from urllib.parse import parse_qs as parse_query_string
-from urllib.parse import urlencode as encode_query_string
+from urllib.parse import (
+    parse_qs as parse_query_string,
+    urlencode as encode_query_string,
+)
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.params import Query
 from fastapi.responses import JSONResponse, Response
 from scim2_models import (
@@ -10,18 +12,20 @@ from scim2_models import (
     ChangePassword,
     ETag,
     Filter,
-    Group,
+    Group as ScimGroup,
     ListResponse,
     Patch,
     PatchOp,
     ServiceProviderConfig,
     Sort,
-    User,
+    User as ScimUser,
 )
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from nc_scim.forwarder import GroupAPI, NCAPIResponseError, UserAPI
-from nc_scim.mappings import group_nc_to_scim, user_nc_to_scim, user_scim_to_nc
+from nc_scim.forwarder import GroupAPI, UserAPI
+
+# from nc_scim.mappings import group_nc_to_scim
+from nc_scim.models import NCGroup, NCUser
 
 
 class QueryStringFlatteningMiddleware:
@@ -50,6 +54,27 @@ class QueryStringFlatteningMiddleware:
         await self.app(scope, receive, send)
 
 
+# Helper functions
+def select_path_attr_last_parent(obj: ScimUser | ScimGroup, path_parts: list[str]):
+    """
+    Return the last parent in the given path.
+
+    Examples
+    --------
+    - Object: User
+    - Given path: `name.givenName`
+    - Last parent: `name`
+    """
+
+    if len(path_parts) == 1:
+        return obj
+
+    last_parent = getattr(obj, path_parts[0])
+    children = path_parts[1:]
+
+    return select_path_attr_last_parent(last_parent, children)
+
+
 app = FastAPI()
 app.add_middleware(QueryStringFlatteningMiddleware)
 
@@ -62,27 +87,24 @@ def get_users(
     attributes: Annotated[list, Query()] = [],
     count: Optional[int] = None,
     excludedAttributes: Annotated[list, Query()] = [],
-    filter: Optional[str] = None,  # TODO: need to work on this one
+    # filter: Optional[str] = None,  # TODO: need to work on this one
     # sortBy: str = 'id',
     # sortOrder: Optional[SearchRequest.SortOrder] = None,
     startIndex: int = 1,
 ):
     # Get all users
-    all_users, _ = UserAPI.get_all()
+    all_users = UserAPI.get_all()
 
     # Set dynamic defaults of parameters
     if not count:
         count = len(all_users)
 
-    scim_users: list[User] = []
+    scim_users: list[ScimUser] = []
     for u in all_users[startIndex - 1 : count]:
-        u_data, _ = UserAPI.get(u)
-        transformed = user_nc_to_scim(
-            u_data, attributes=attributes, excluded_attributes=excludedAttributes
-        )
-        scim_users.append(transformed)
+        u_data = UserAPI.get(u)
+        scim_users.append(u_data.to_scim())
 
-    return ListResponse[User].model_validate(
+    return ListResponse[ScimUser].model_validate(
         {"Resources": [u.model_dump() for u in scim_users]}
     )
 
@@ -94,68 +116,24 @@ def get_user_by_id(
     excludedAttributes: Annotated[list, Query()] = [],
 ):
     """Get the user with the specified user ID."""
-    user, _ = UserAPI.get(user_id)
-    if user is None:
-        return JSONResponse(
-            status_code=404, content={"message": f"User '{user_id}' does not exist."}
-        )
-    # return PlainTextResponse(f'"{user == None}"')
-    return User.model_validate(
-        user_nc_to_scim(
-            user,
-            attributes=["groups"] + attributes,
-            excluded_attributes=excludedAttributes,
-            all_attributes=True,
-        )
-    )
+    user = UserAPI.get(user_id)
+
+    return user.to_scim()
 
 
 @app.post("/Users")
-def create_user(data: User):
-    nc_user = user_scim_to_nc(data)
-    try:
-        UserAPI.new(**nc_user)[1].raise_for_ncapi_status()
-    except NCAPIResponseError as e:
-        if e.nc_response.status_code == 102:
-            return JSONResponse(
-                status_code=409,
-                content={
-                    "message": f"User '{nc_user['user_id']}' already exists",
-                    "nc_status_code": e.nc_response.status_code,
-                },
-            )
-        elif e.nc_response.status_code >= 101 and e.nc_response.status_code <= 111:
-            return JSONResponse(
-                status_code=400,
-                content={
-                    "message": e.message,
-                    "nc_status_code": e.nc_response.status_code,
-                },
-            )
-    return Response(status_code=201)
+def create_user(data: ScimUser):
+    nc_user = NCUser.from_scim(data)
+    UserAPI.new(nc_user)
+
+    new = UserAPI.get(nc_user.id).to_scim().model_dump()
+
+    return JSONResponse(status_code=201, content=new)
 
 
 @app.delete("/Users/{user_id}")
 def delete_user(user_id: str):
-    try:
-        UserAPI.delete(user_id)[1].raise_for_ncapi_status()
-    except NCAPIResponseError as e:
-        if e.nc_response.status_code == 998:
-            return JSONResponse(
-                status_code=404,
-                content={
-                    "message": f"User '{user_id}' does not exist",
-                    "nc_status_code": e.nc_response.status_code,
-                },
-            )
-        else:
-            return JSONResponse(
-                status_code=500,
-                content={
-                    "message": "Unknown error",
-                    "nc_response": e.nc_response.serialize(),
-                },
-            )
+    UserAPI.delete(user_id)
     return Response(status_code=204)
 
 
@@ -164,29 +142,29 @@ def delete_user(user_id: str):
 
 @app.get("/Groups")
 def get_groups(
-    attributes: Annotated[list, Query()] = [],
+    # attributes: Annotated[list, Query()] = [],
     count: Optional[int] = None,
-    excludedAttributes: Annotated[list, Query()] = [],
-    filter: Optional[str] = None,  # TODO: need to work on this one
+    # excludedAttributes: Annotated[list, Query()] = [],
+    # filter: Optional[str] = None,  # TODO: need to work on this one
     # sortBy: str = 'id',
     # sortOrder: Optional[SearchRequest.SortOrder] = None,
     startIndex: int = 1,
-):
+) -> ListResponse[ScimGroup]:
     # Get all groups
-    all_groups, _ = GroupAPI.get()
+    all_group_ids = GroupAPI.get()
 
     # Set dynamic defaults of parameters
     if not count:
-        count = len(all_groups)
+        count = len(all_group_ids)
 
-    scim_groups: list[Group] = [
-        group_nc_to_scim(
-            g, attributes=attributes, excluded_attributes=excludedAttributes
-        )
-        for g in all_groups[startIndex - 1 : count]
+    nc_groups: list[NCGroup] = [
+        NCGroup.model_validate({"groupid": gid, "members": GroupAPI.get_members(gid)})
+        for gid in all_group_ids[startIndex - 1 : count]
     ]
 
-    return ListResponse[Group].model_validate(
+    scim_groups: list[ScimGroup] = [ncg.to_scim() for ncg in nc_groups]
+
+    return ListResponse[ScimGroup].model_validate(
         {"Resources": [g.model_dump() for g in scim_groups]}
     )
 
@@ -194,21 +172,50 @@ def get_groups(
 @app.get("/Groups/{group_id}")
 def get_group_by_id(
     group_id: str,
-    attributes: Annotated[list, Query()] = ["members"],
-    excludedAttributes: Annotated[list, Query()] = [],
-):
-    d = GroupAPI.get_members(group_id)
-    d[1].raise_for_ncapi_status()
-
-    scim_group = group_nc_to_scim(
-        group_id, attributes=attributes, excluded_attributes=excludedAttributes
+    # attributes: Annotated[list, Query()] = ["members"],
+    # excludedAttributes: Annotated[list, Query()] = [],
+) -> ScimGroup:
+    nc_group = NCGroup.model_validate(
+        {
+            "groupid": group_id,
+            "members": GroupAPI.get_members(group_id),
+        }
     )
 
-    return Group.model_validate(scim_group)
+    return nc_group.to_scim()
+
+
+@app.post("/Groups")
+def create_group(data: ScimGroup):
+    if data.display_name is None:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "message": "The `displayName` field is required for group creation."
+            },
+        )
+
+    GroupAPI.new(data.display_name)
+    members = GroupAPI.get_members(data.display_name)
+
+    group = ScimGroup.model_validate(
+        {
+            "displayName": data.display_name,
+            "id": data.display_name,
+            "members": members,
+        }
+    )
+    return JSONResponse(status_code=201, content=group.model_dump())
+
+
+@app.delete("/Groups/{group_id}")
+def delete_group(group_id: str):
+    GroupAPI.delete(group_id)
+    return Response(status_code=204)
 
 
 @app.patch("/Groups/{group_id}")
-def add_users_to_group(group_id: str, data: PatchOp[Group]):
+def update_group_membership(group_id: str, data: PatchOp[ScimGroup]):
     assert data.operations is not None, "No operations given"
     assert data.operations[0].value is not None, "No users given"
     _users_raw: list[dict[str, str]] = data.operations[0].value
@@ -223,63 +230,20 @@ def add_users_to_group(group_id: str, data: PatchOp[Group]):
 
     match data.operations[0].op:
         case "add":
-            try:
-                for user in _users_raw:
-                    d, r = UserAPI.add_to_group(user["value"], group_id)
-                    r.raise_for_ncapi_status()
-                    # if not r.data:
-                    #     raise NCAPIResponseError(r, 'no data')
-            except NCAPIResponseError as e:
-                # raise e
-                match e.nc_response.status_code:
-                    case 101:
-                        return JSONResponse(
-                            status_code=400, content={"message": e.message}
-                        )
-                    case 102, 103:
-                        return JSONResponse(
-                            status_code=404, content={"message": e.message}
-                        )
-                    case 104:
-                        return JSONResponse(
-                            status_code=403, content={"message": e.message}
-                        )
-                    case 105, _:
-                        return JSONResponse(
-                            status_code=500, content={"message": e.message}
-                        )
+            for user in _users_raw:
+                UserAPI.add_to_group(user["value"], group_id)
+
         case "remove":
-            try:
-                for user in _users_raw:
-                    d, r = UserAPI.remove_from_group(user["value"], group_id)
-                    r.raise_for_ncapi_status()
-            except NCAPIResponseError as e:
-                match e.nc_response.status_code:
-                    case 101:
-                        return JSONResponse(
-                            status_code=400, content={"message": e.message}
-                        )
-                    case 102, 103:
-                        return JSONResponse(
-                            status_code=404, content={"message": e.message}
-                        )
-                    case 104:
-                        return JSONResponse(
-                            status_code=403, content={"message": e.message}
-                        )
-                    case 105, _:
-                        return JSONResponse(
-                            status_code=500, content={"message": e.message}
-                        )
+            for user in _users_raw:
+                UserAPI.remove_from_group(user["value"], group_id)
+
         case _:
-            return JSONResponse(
+            raise HTTPException(
                 status_code=400,
-                content={
-                    "message": f"Unimplemented operation '{data.operations[0].op}'"
-                },
+                detail=f"Unimplemented operation '{data.operations[0].op}'",
             )
 
-    return Response(status_code=200)
+    return Response(status_code=204)
 
 
 # Service Provider Config
@@ -297,12 +261,13 @@ def get_service_provider_config():
     )
 
 
-@app.get("/Me")
-@app.put("/Me")
-@app.patch("/Me")
+@app.get("/Me", name="SCIM /Me endpoint - unimplemented")
+@app.put("/Me", name="SCIM /Me endpoint - unimplemented")
+@app.patch("/Me", name="SCIM /Me endpoint - unimplemented")
 def me_unimplemented():
-    return JSONResponse(
-        status_code=404, content={"message": "The '/Me' endpoint is not implemented."}
+    """SCIM /Me endpoint - unimplemented"""
+    return HTTPException(
+        status_code=404, detail="The '/Me' endpoint is not implemented."
     )
 
 

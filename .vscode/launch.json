@@ -1,6 +1,15 @@
 {
     "configurations": [
         {
+            "name": "Pytest",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "console": "integratedTerminal",
+            "args": "${command:pickArgs}",
+            "justMyCode": true
+        },
+        {
             "name": "Start receiver",
             "type": "debugpy",
             "request": "launch",

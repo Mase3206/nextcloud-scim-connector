@@ -2,7 +2,7 @@ from typing import Any
 
 import yaml
 
-with open("config.yml", "r") as f:
+with open("config.yml") as f:
     raw_config: dict[str, Any] = yaml.safe_load(f)
 
 SCIM_TOKEN = str(raw_config.get("scim", {}).get("token"))

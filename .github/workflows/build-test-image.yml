@@ -1,0 +1,38 @@
+name: Build and upload Nextcloud test server image
+on:
+  pull_request:
+
+env:
+  IMAGE_NAME: nc-scim-test-server
+  VERSION: latest
+
+
+jobs:
+  build-and-upload:
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+      contents: read
+
+    steps:
+    - name: Get the code from github
+      uses: actions/checkout@v2
+      with:
+        submodules: false
+
+    - name: Build image
+      run: docker build tests --file tests/Dockerfile.nctest --tag $IMAGE_NAME --label "runnumber=${GITHUB_RUN_ID}"
+
+    - name: Log in to registry
+      run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+    - name: Push image
+      run: |
+        IMAGE_ID=ghcr.io/${{ github.repository_owner }}/$IMAGE_NAME
+
+        # This changes all uppercase characters to lowercase.
+        IMAGE_ID=$(echo $IMAGE_ID | tr '[A-Z]' '[a-z]')
+
+        echo IMAGE_ID=$IMAGE_ID
+        docker tag $IMAGE_NAME $IMAGE_ID:$VERSION
+        docker push $IMAGE_ID:$VERSION
