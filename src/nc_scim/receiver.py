@@ -137,6 +137,14 @@ def delete_user(user_id: str):
     return Response(status_code=204)
 
 
+@app.patch("/Users/{user_id}")
+def update_user_not_implemented(user_id: str, data: PatchOp[ScimUser]):
+    raise HTTPException(
+        status_code=405,
+        detail="PATCH operations on users are currently not implemented. See README.md for details.",
+    )
+
+
 # Groups
 
 

@@ -214,7 +214,10 @@ class UserAPI:
             requests.put(
                 url_assemble(f"/users/{user_id}"),
                 headers=standard_headers,
-                params={key: value},
+                params={
+                    'key': key,
+                    'value': value
+                },
             ),
             status_code_mapping=[
                 NCStatusCode(100, 200, "success"),
