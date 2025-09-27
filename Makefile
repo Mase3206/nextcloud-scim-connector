@@ -15,3 +15,6 @@ test-down:
 test:
 	$(MAKE) test-down
 	act -j pytest
+
+dev:
+	poetry run fastapi dev src/nc_scim/receiver.py

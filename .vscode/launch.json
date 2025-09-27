@@ -7,7 +7,7 @@
             "module": "pytest",
             "console": "integratedTerminal",
             "args": "${command:pickArgs}",
-            "justMyCode": false
+            "justMyCode": true
         },
         {
             "name": "Start receiver",

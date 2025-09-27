@@ -11,6 +11,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+    - name: Install dependencies
+      run: |
+        curl -sSL https://bit.ly/install-xq | sudo bash
+
     - name: Get the code from github
       uses: actions/checkout@v2
       with:

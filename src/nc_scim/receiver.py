@@ -21,7 +21,8 @@ from scim2_models import (
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from nc_scim.forwarder import GroupAPI, UserAPI
-from nc_scim.mappings import group_nc_to_scim, user_nc_to_scim, user_scim_to_nc
+from nc_scim.mappings import group_nc_to_scim
+from nc_scim.models import NCUser
 
 
 class QueryStringFlatteningMiddleware:
@@ -83,7 +84,7 @@ def get_users(
     attributes: Annotated[list, Query()] = [],
     count: Optional[int] = None,
     excludedAttributes: Annotated[list, Query()] = [],
-    filter: Optional[str] = None,  # TODO: need to work on this one
+    # filter: Optional[str] = None,  # TODO: need to work on this one
     # sortBy: str = 'id',
     # sortOrder: Optional[SearchRequest.SortOrder] = None,
     startIndex: int = 1,
@@ -98,10 +99,10 @@ def get_users(
     scim_users: list[User] = []
     for u in all_users[startIndex - 1 : count]:
         u_data = UserAPI.get(u)
-        transformed = user_nc_to_scim(
-            u_data, attributes=attributes, excluded_attributes=excludedAttributes
-        )
-        scim_users.append(transformed)
+        # transformed = user_nc_to_scim(
+        #     u_data, attributes=attributes, excluded_attributes=excludedAttributes
+        # )
+        scim_users.append(u_data.to_scim())
 
     return ListResponse[User].model_validate(
         {"Resources": [u.model_dump() for u in scim_users]}
@@ -117,23 +118,26 @@ def get_user_by_id(
     """Get the user with the specified user ID."""
     user = UserAPI.get(user_id)
 
-    return User.model_validate(
-        user_nc_to_scim(
-            user,
-            attributes=["groups"] + attributes,
-            excluded_attributes=excludedAttributes,
-            all_attributes=True,
-        )
-    )
+    # return User.model_validate(
+    # user_nc_to_scim(
+    #     user,
+    #     attributes=["groups"] + attributes,
+    #     excluded_attributes=excludedAttributes,
+    #     all_attributes=True,
+    # )
+    # )
+    return user.to_scim()
 
 
 @app.post("/Users")
 def create_user(data: User):
-    nc_user = user_scim_to_nc(data)
-    UserAPI.new(**nc_user)
+    # nc_user = user_scim_to_nc(data)
+    # UserAPI.new(**nc_user)
+    nc_user = NCUser.from_scim(data)
+    UserAPI.new(nc_user)
 
     # TODO: Currently broken. Actively making an NCUser model to solve this issue (and others like it)
-    new = User.model_validate(user_nc_to_scim(UserAPI.get(nc_user["user_id"])))
+    new = UserAPI.get(nc_user.id).to_scim().model_dump()
 
     return JSONResponse(status_code=201, content=new)
 
@@ -152,7 +156,7 @@ def get_groups(
     attributes: Annotated[list, Query()] = [],
     count: Optional[int] = None,
     excludedAttributes: Annotated[list, Query()] = [],
-    filter: Optional[str] = None,  # TODO: need to work on this one
+    # filter: Optional[str] = None,  # TODO: need to work on this one
     # sortBy: str = 'id',
     # sortOrder: Optional[SearchRequest.SortOrder] = None,
     startIndex: int = 1,
@@ -180,7 +184,8 @@ def get_groups(
             group_members=gm,
         )
         for gid, gm in zip(
-            all_groups[startIndex - 1 : count], group_members[startIndex - 1 : count]
+            all_groups[startIndex - 1 : count],
+            group_members[startIndex - 1 : count],
         )
     ]
 
@@ -285,10 +290,11 @@ def get_service_provider_config():
     )
 
 
-@app.get("/Me")
-@app.put("/Me")
-@app.patch("/Me")
+@app.get("/Me", name="SCIM /Me endpoint - unimplemented")
+@app.put("/Me", name="SCIM /Me endpoint - unimplemented")
+@app.patch("/Me", name="SCIM /Me endpoint - unimplemented")
 def me_unimplemented():
+    """SCIM /Me endpoint - unimplemented"""
     return HTTPException(
         status_code=404, detail="The '/Me' endpoint is not implemented."
     )

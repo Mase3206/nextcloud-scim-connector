@@ -12,6 +12,7 @@ from nc_scim import (
     NEXTCLOUD_SECRET,
     NEXTCLOUD_USERNAME,
 )
+from nc_scim.models import NCUser
 
 standard_headers = {"OCS-APIRequest": "true"}
 post_headers = {**standard_headers, "Content-Type": "application/x-www-form-urlencoded"}
@@ -131,15 +132,16 @@ class UserAPI:
     # https://docs.nextcloud.com/server/latest/admin_manual/configuration_user/instruction_set_for_users.html#add-a-new-user
     @staticmethod
     def new(
-        user_id: str,
-        display_name: str,
-        email: str,
-        groups: list[str] = [],
-        password: str = "This is not set by SCIM.",
-        subadmin_groups: list[str] = [],
-        quota: str = "",
-        language: str = "en",
-        enabled: bool = True,
+        # user_id: str,
+        # display_name: str,
+        # email: str,
+        # groups: list[str] = [],
+        # password: str = "This is not set by SCIM.",
+        # subadmin_groups: list[str] = [],
+        # quota: str = "",
+        # language: str = "en",
+        # enabled: bool = True,
+        nc_user: NCUser,
     ):
         # fmt: off
         r = NCResponse(
@@ -147,14 +149,13 @@ class UserAPI:
                 url_assemble("/users"),
                 headers=post_headers,
                 data={
-                    "userid": user_id,
-                    "displayName": display_name,
-                    "email": email,
-                    "groups": groups,
-                    "password": password,
-                    "subadmin": subadmin_groups,
-                    "quota": quota,
-                    "language": language,
+                    "userid": nc_user.id,
+                    "displayName": nc_user.displayname,
+                    "email": nc_user.email,
+                    "groups":  nc_user.groups,
+                    "password": 'This is not set by SCIM.',
+                    "quota": nc_user.quota,
+                    # "language": nc_user.language,
                 },
             ),
             status_code_mapping=[
@@ -177,7 +178,7 @@ class UserAPI:
 
     # https://docs.nextcloud.com/server/latest/admin_manual/configuration_user/instruction_set_for_users.html#get-data-of-a-single-user
     @staticmethod
-    def get(user_id: str) -> dict[str, Any]:
+    def get(user_id: str) -> NCUser:
         r = NCResponse(
             requests.get(
                 url_assemble(f"/users/{user_id}"),
@@ -190,7 +191,7 @@ class UserAPI:
         )
         r.raise_for_status()
 
-        return r.data
+        return NCUser.model_validate(r.data)
 
     # https://docs.nextcloud.com/server/latest/admin_manual/configuration_user/instruction_set_for_users.html#edit-data-of-a-single-user
     @staticmethod
@@ -199,12 +200,8 @@ class UserAPI:
             "email",
             "quota",
             "displayname",
-            "display",
             "phone",
             "address",
-            "website",
-            "twitter",
-            "password",
         ]
         if key not in valid_fields:
             raise HTTPException(
@@ -281,9 +278,9 @@ class UserAPI:
 
     # https://docs.nextcloud.com/server/latest/admin_manual/configuration_user/instruction_set_for_users.html#get-user-s-groups
     @staticmethod
-    def get_groups(user_id: str) -> tuple[list[str], NCResponse]:
+    def get_groups(user_id: str) -> list[str]:
         u = UserAPI.get(user_id)
-        return u["groups"]
+        return u.groups
 
     # https://docs.nextcloud.com/server/latest/admin_manual/configuration_user/instruction_set_for_users.html#get-user-s-groups
     @staticmethod

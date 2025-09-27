@@ -32,5 +32,6 @@ Essentially a translator from SCIM to Nextcloud's horribly janky official APIs:
 [nektos/act](https://github.com/nektos/act) is required for automated unit tests. It runs the GitHub Actions locally, which spin up and provision an isolated and consistent test environment.
 
 These are the expected groups. They are configured automatically by [tests/prep-users-and-groups.sh](./tests/prep-users-and-groups.sh) using offical APIs.
+Also, the [command-line tool `xq`](https://github.com/sibprogrammer/xq) is used in the prep-users-and-groups.sh script to parse the XML.
 
 ![Group members](assets/group-membership.png)
