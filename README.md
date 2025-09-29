@@ -30,14 +30,6 @@ Generally speaking, everything not listed above *should* be implemented, but the
 
 ## To-Do
 
-- [x] Add user to group
-- [x] Remove user from group
-- [ ] Update user attribute — [PATCH /Users](https://scim.dev/playground/users.html#update-attribute)
-    - Currently not implemented, as SSO authenticatino (OIDC, SAML, etc.) can do this, and implementing the field translation may require another major refactoring.
-- [ ] Handle multiple patch operations at once
-    - [ ] PATCH /Users
-    - [ ] PATCH /Groups
-- [ ] HTTP Bearer authentication — [potentially helpful StackOverflow thread](https://stackoverflow.com/questions/76867554/fastapi-how-to-access-bearer-token)
 - [ ] Target the right user backend (oidc_user, etc.) instead of the default built-in one
     - Will require a modified API wrapper for those specific endpoints
 - [ ] Testing!! — in progress
@@ -49,6 +41,9 @@ Generally speaking, everything not listed above *should* be implemented, but the
         - Will need to target a specific version of Nextcloud for testing with oidc_user, as it doesn't support untagged versions (i.e. pulling directly from the Git repo's main/master branch)
     - [x] GitHub Action
 
+> [!NOTE]
+> See issues for more to-dos. The ones here in this list are essentially in the backlog of my backlog.
+
 
 ## Development
 
@@ -59,6 +54,7 @@ Generally speaking, everything not listed above *should* be implemented, but the
 - `xq` - [github.com/sibprogrammer/xq](https://github.com/sibprogrammer/xq)
 - Docker and Docker Compose
 - `act` - [github.com/nektos/act](https://github.com/nektos/act)
+- make
 
 [nektos/act](https://github.com/nektos/act) is required for automated unit tests. It runs the GitHub Actions locally, which spin up and provision an isolated and consistent test environment.
 

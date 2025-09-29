@@ -1,5 +1,3 @@
-TEST_SECRET="admin"
-
 test-build:
 	docker compose -f tests/docker-compose.yml build nextcloud
 
