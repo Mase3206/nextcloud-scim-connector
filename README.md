@@ -71,4 +71,4 @@ Also, the [command-line tool `xq`](https://github.com/sibprogrammer/xq) is used 
 - Nextcloud group API: https://docs.nextcloud.com/server/latest/admin_manual/configuration_user/instruction_set_for_groups.html#create-a-group
 
 > [!IMPORTANT]
-> Ruff and isort are used for linting and formatting. Please use them before submitting any code. Code that does not conform to the formatting rules configured in the pyproject.toml file will not be accepted.
+> Ruff is used for linting and formatting. Please use them before submitting any code. Code that does not conform to the formatting rules configured in the pyproject.toml file will not be accepted.
