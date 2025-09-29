@@ -4,6 +4,12 @@ on:
     branches:
       - '*'
 
+env:
+  SCIM_TOKEN: ""
+  NEXTCLOUD_BASEURL: "localhost:8080"
+  NEXTCLOUD_HTTPS: false
+  NEXTCLOUD_USERNAME: "admin"
+  NEXTCLOUD_SECRET: "admin"
 
 jobs:
   pytest:
@@ -19,20 +25,11 @@ jobs:
       with:
         submodules: false
 
-    - name: Copy tests/test_config.yml into config.yml
-      run: cat tests/test_config.yml > config.yml
-
-    # - name: Bootstrap the Nextcloud dev server
-    #   run: |
-    #     cd tests/nextcloud-docker-dev
-    #     ./bootstrap.sh
-    #     cd ../..
-
     - name: Start the Nextcloud dev server
       uses: hoverkraft-tech/compose-action@v2.3.0
       with:
         compose-file: ./tests/docker-compose.yml
-        up-flags: '--build --force-recreate -d --wait --wait-timeout 300'
+        up-flags: '--force-recreate -d --wait --wait-timeout 300'
         down-flags: '-v'
         services-log-level: info
         compose-flags: '--progress plain'
@@ -64,12 +61,6 @@ jobs:
       run: |
         poetry install
         poetry install --with=test
-
-    # - name: Make sure the Nextcloud dev server is online (10-second timeout)
-    #   run: |
-    #     curl -L https://raw.githubusercontent.com/nickjj/wait-until/v0.3.0/wait-until -o wait-until
-    #     chmod +x wait-until
-    #     ./wait-until '[[ $(curl -I http://localhost:8080 -o /dev/null -w %{http_code}) -eq 302 ]]' 60
 
     - name: Create users and add them to groups for testing
       run: ./tests/prep-users-and-groups.sh

@@ -1,5 +1,4 @@
-name: nc_scim_test
-
+name: example-stack
 services:
   nextcloud:
   #   container_name: test-nextcloud
@@ -7,7 +6,7 @@ services:
     - 8080:80
     image: ghcr.io/mase3206/nc-scim-test-server:latest
     # build:
-    #   context: .
+    #   context: tests/
     #   dockerfile: Dockerfile.nctest
     depends_on:
     - database-mysql
@@ -32,3 +31,18 @@ services:
 
   redis:
     image: redis:8
+
+  nc-scim:
+    ports:
+    - 8000:8000
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+    - nextcloud
+    environment:
+      SCIM_TOKEN: ""
+      NEXTCLOUD_BASEURL: "nextcloud:80"
+      NEXTCLOUD_HTTPS: false
+      NEXTCLOUD_USERNAME: "admin"
+      NEXTCLOUD_SECRET: "admin"

@@ -18,3 +18,8 @@ test:
 
 dev:
 	poetry run fastapi dev src/nc_scim/receiver.py
+
+build:
+	yes | docker builder prune --all
+	poetry build --clean
+	docker build -t nc-scim .

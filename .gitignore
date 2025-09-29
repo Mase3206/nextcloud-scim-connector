@@ -209,8 +209,5 @@ __marimo__/
 # macOS metadata files
 .DS_Store
 
-# Config files
-config.yml
-
 # Sample data
 sample/

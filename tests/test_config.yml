@@ -1,8 +1,0 @@
-scim:
-  token: ''
-
-nextcloud:
-  baseurl: localhost:8080
-  username: admin
-  secret: admin
-  https: false
