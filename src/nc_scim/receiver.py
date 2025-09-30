@@ -411,30 +411,34 @@ def update_group_membership(
     data: PatchOp[ScimGroup] = Body(media_type="application/scim+json"),
     token: str = Depends(get_token),
 ):
-    assert data.operations is not None, "No operations given"
-    assert data.operations[0].value is not None, "No users given"
-    _users_raw: list[dict[str, str]] = data.operations[0].value
+    if not data.operations:
+        raise HTTPException(status_code=400, detail="No operations given")
 
-    if data.operations[0].path != "members":
-        raise HTTPException(
-            status_code=400,
-            detail="Only patching group membership is implemented at this time",
-        )
+    for op in data.operations:
+        if not op.value:
+            raise HTTPException(status_code=400, detail="No users given")
+        user_ids = [u["value"] for u in op.value]
 
-    match data.operations[0].op:
-        case "add":
-            for user in _users_raw:
-                UserAPI.add_to_group(user["value"], group_id)
-
-        case "remove":
-            for user in _users_raw:
-                UserAPI.remove_from_group(user["value"], group_id)
-
-        case _:
+        if op.path != "members":
             raise HTTPException(
                 status_code=400,
-                detail=f"Unimplemented operation '{data.operations[0].op}'",
+                detail="Only patching group membership is implemented at this time",
             )
+
+        match op.op:
+            case "add":
+                for uid in user_ids:
+                    UserAPI.add_to_group(uid, group_id)
+
+            case "remove":
+                for uid in user_ids:
+                    UserAPI.remove_from_group(uid, group_id)
+
+            case _:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Unimplemented operation '{data.operations[0].op}'",
+                )
 
     group = NCGroup(groupid=group_id, members=GroupAPI.get_members(group_id))
 
