@@ -1,7 +1,5 @@
 import json
 
-import requests
-
 add_group_data = json.loads("""{
     "schemas": [
         "urn:ietf:params:scim:api:messages:2.0:PatchOp"
@@ -60,13 +58,13 @@ update_user_data = json.loads("""{
 # print(data)
 # print()
 
-print(
-    requests.post(
-        url="http://localhost:8000/Users",
-        data=json.dumps(new_user_data),
-        headers={"Content-Type": "application/scim+json"},
-    ).text
-)
+# print(
+#     requests.post(
+#         url="http://localhost:8000/Users",
+#         data=json.dumps(new_user_data),
+#         headers={"Content-Type": "application/scim+json"},
+#     ).text
+# )
 
 # response = requests.post(
 #     url="http://localhost:8000/Groups",
