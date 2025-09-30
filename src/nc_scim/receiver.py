@@ -3,6 +3,7 @@ from urllib.parse import (
     parse_qs as parse_query_string,
     urlencode as encode_query_string,
 )
+import logging
 
 from fastapi import Body, Depends, FastAPI, HTTPException
 from fastapi.exceptions import RequestValidationError
@@ -149,6 +150,17 @@ class ScimContentlessResponse(Response):
     media_type = "application/scim+json"
 
 
+# Configure basic logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+
+# Create a logger instance
+logger = logging.getLogger(__name__)
+
 app = FastAPI(separate_input_output_schemas=False, root_path=str(CONNECTOR_BASEPATH))
 app.add_middleware(QueryStringFlatteningMiddleware)
 
@@ -165,16 +177,19 @@ COMMON_API_DEPENDENCIES = [Depends(get_token)]
 async def request_validation_exception_handler(
     request: ..., exc: RequestValidationError
 ):
+    logger.error(str(exc))
     return ScimJsonResponse(status_code=422, content=ScimValidationError(exc))
 
 
 @app.exception_handler(500)
 async def internal_server_error_handler(request: ..., exc: Exception):
+    logger.error(str(exc))
     return ScimJsonResponse(status_code=500, content=ScimInternalServerError(exc))
 
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: ..., exc: HTTPException):
+    logger.error(str(exc))
     return ScimJsonResponse(status_code=exc.status_code, content=ScimHttpException(exc))
 
 
