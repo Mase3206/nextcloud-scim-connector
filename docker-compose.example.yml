@@ -4,7 +4,7 @@ services:
   #   container_name: test-nextcloud
     ports:
     - 8080:80
-    image: ghcr.io/mase3206/nc-scim-test-server:latest
+    image: ghcr.io/mase3206/nc-scim-nextcloud-test-server:latest
     # build:
     #   context: tests/
     #   dockerfile: Dockerfile.nctest
@@ -35,6 +35,7 @@ services:
   nc-scim:
     ports:
     - 8000:8000
+    image: ghcr.io/mase3206/nc-scim:latest
     build:
       context: .
       dockerfile: Dockerfile
