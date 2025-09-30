@@ -1,10 +1,10 @@
 # Nextcloud SCIM Connector
 
-SCIM connector for Nextcloud
+SCIM connector for [Nextcloud](https://nextcloud.com/)
 
-This is essentially a translator from SCIM to Nextcloud's user and group provisioning APIs. This project aims to add SCIM service provider (the application-end) functionality to Nextcloud, as the existing Nextcloud [scimserviceprovider project](https://forge.libre.sh/libre.sh/scimserviceprovider) has had very little development recently, and I'm tired of waiting.
+This is essentially a translator from [SCIM](https://scim.cloud/) to Nextcloud's user and group provisioning APIs (see [# Extra Notes](#extra-notes) for links). This project aims to add SCIM service provider (the application-end) functionality to Nextcloud, as the existing Nextcloud [scimserviceprovider project](https://forge.libre.sh/libre.sh/scimserviceprovider) has had very little development recently, and I'm tired of waiting for it to finish.
 
-I aim to make this implementation as complete as is reasonably possible for a full-time student (me) to implement in their free time, but I am sure I have left some things out. It is specifically optimized for Authentik and user_oidc, as that is my intended deployment, but it will likely work with other IdP's and SSO protocols and implementations.
+I aim to make this implementation as complete as is reasonably possible for a full-time student (me) to implement in their free time, but I am sure I have left some things out. It's specifically optimized for [Authentik](https://goauthentik.io) and [user_oidc](https://github.com/nextcloud/user_oidc), as that is my intended deployment, but it'll likely work with other IdPs and SSO protocols and implementations.
 
 Some things are deliberately left unimplemented, as I do not have the capacity at this time to implement them well. See the next three sections for details on what this does and does not implement, and what I plan on implementing in the future.
 
@@ -28,7 +28,7 @@ Generally speaking, everything not listed above *should* be implemented, but the
 - PATCH operations on groups — required for updating group membership
 - GET /ServiceProviderConfig — ensures the identity provider knows what this does and doesn't support, like filter operations.
 
-## To-Do
+## Future to-do's
 
 - [ ] Target the right user backend (oidc_user, etc.) instead of the default built-in one
     - Will require a modified API wrapper for those specific endpoints
@@ -37,9 +37,6 @@ Generally speaking, everything not listed above *should* be implemented, but the
         - [x] Receiver
         - [ ] NCUser to/from ScimUser conversion
         - [ ] NCApi calls, both UserAPI and GroupAPI
-    - [x] Nextcloud test environment — uses a customized container based on [ghcr.io/juliusknorr/nextcloud-dev-php81](ghcr.io/juliusknorr/nextcloud-dev-php81:latest)
-        - Will need to target a specific version of Nextcloud for testing with oidc_user, as it doesn't support untagged versions (i.e. pulling directly from the Git repo's main/master branch)
-    - [x] GitHub Action
 
 > [!NOTE]
 > See issues for more to-dos. The ones here in this list are essentially in the backlog of my backlog.
@@ -47,14 +44,66 @@ Generally speaking, everything not listed above *should* be implemented, but the
 
 ## Development
 
-**System dependencies for development:**
+### System dependencies for development
 
 - Python 3.13+
 - Poetry
-- `xq` - [github.com/sibprogrammer/xq](https://github.com/sibprogrammer/xq)
+- `xq`, command-line XML formatter and querier &mdash; used in a handful of places
+    - Get it: [github.com/sibprogrammer/xq](https://github.com/sibprogrammer/xq)
+- `jq`, JSON formatter and querier &mdash; not required, but highly recommended if you use cURL for testing
 - Docker and Docker Compose
-- `act` - [github.com/nektos/act](https://github.com/nektos/act)
-- make
+- `act`, local GitHub Action runner &mdash; used for the full test case runner
+    - Get it: [github.com/nektos/act](https://github.com/nektos/act)
+- GNU Make
+
+### Developing in this environment
+
+This project makes extensive use of GNU Make for common and lengthy commands and multi-step actions. All formulae are in the [Makefile](./Makefile) in the project's root.
+
+Set up your local development environment:
+```shell
+# Install dependencies
+poetry install --all-groups
+# Create .env file with default values for development
+make env
+```
+
+Running the dev server:
+```shell
+make dev
+```
+
+Testing:
+```shell
+# Start the Nextcloud dev environment
+make test-up
+
+# Run PyTest
+poetry run pytest
+
+# Stop the Nextcloud dev environment
+make test-down
+
+# Run the GitHub PyTest action
+make test
+```
+
+Building the nc-scim Docker image:
+```shell
+make build
+```
+
+
+Linting and formatting:
+```shell
+make lint
+make format
+```
+
+> [!IMPORTANT]
+> Ruff is used for linting and formatting. Please use them before submitting any code. Code that does not conform to the formatting rules configured in the pyproject.toml file will not be accepted.
+
+### Extra notes
 
 [nektos/act](https://github.com/nektos/act) is required for automated unit tests. It runs the GitHub Actions locally, which spin up and provision an isolated and consistent test environment.
 
@@ -65,6 +114,3 @@ Also, the [command-line tool `xq`](https://github.com/sibprogrammer/xq) is used 
 
 - Nextcloud user API: https://docs.nextcloud.com/server/latest/admin_manual/configuration_user/instruction_set_for_users.html
 - Nextcloud group API: https://docs.nextcloud.com/server/latest/admin_manual/configuration_user/instruction_set_for_groups.html#create-a-group
-
-> [!IMPORTANT]
-> Ruff is used for linting and formatting. Please use them before submitting any code. Code that does not conform to the formatting rules configured in the pyproject.toml file will not be accepted.

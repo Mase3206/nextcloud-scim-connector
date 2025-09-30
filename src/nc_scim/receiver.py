@@ -1,15 +1,20 @@
-from typing import Annotated, Optional
+from typing import Annotated, Any, Mapping, Optional
 from urllib.parse import (
     parse_qs as parse_query_string,
     urlencode as encode_query_string,
 )
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Body, Depends, FastAPI, HTTPException
+from fastapi.exceptions import RequestValidationError
 from fastapi.params import Query
 from fastapi.responses import JSONResponse, Response
+from fastapi.security.http import HTTPAuthorizationCredentials, HTTPBearer
+from pydantic import BaseModel
 from scim2_models import (
     Bulk,
     ChangePassword,
+    Context,
+    Error,
     ETag,
     Filter,
     Group as ScimGroup,
@@ -20,11 +25,12 @@ from scim2_models import (
     Sort,
     User as ScimUser,
 )
+from scim2_models.scim_object import ScimObject
+from starlette.background import BackgroundTask
 from starlette.types import ASGIApp, Receive, Scope, Send
 
+from nc_scim import SCIM_TOKEN
 from nc_scim.forwarder import GroupAPI, UserAPI
-
-# from nc_scim.mappings import group_nc_to_scim
 from nc_scim.models import NCGroup, NCUser
 
 
@@ -75,14 +81,113 @@ def select_path_attr_last_parent(obj: ScimUser | ScimGroup, path_parts: list[str
     return select_path_attr_last_parent(last_parent, children)
 
 
-app = FastAPI()
+class UnauthorizedMessage(Error):
+    detail: str = "Bearer token missing or unknown."
+    status: int = 401
+
+
+class ScimValidationError(Error):
+    status: int = 422
+
+    def __init__(self, exc: RequestValidationError):
+        super().__init__(detail="\n".join([e["msg"] for e in exc.errors()]))
+
+
+class ScimInternalServerError(Error):
+    status: int = 500
+
+    def __init__(self, exc: Exception):
+        super().__init__(detail=f"Internal server error: '{exc}'")
+
+
+class ScimHttpException(Error):
+    def __init__(self, exc: HTTPException):
+        super().__init__(status=exc.status_code, detail=exc.detail)
+
+
+get_bearer_token = HTTPBearer(auto_error=False)
+
+
+async def get_token(
+    auth: Optional[HTTPAuthorizationCredentials] = Depends(get_bearer_token),
+) -> str:
+    if auth is None or (token := auth.credentials) != SCIM_TOKEN:
+        raise HTTPException(
+            status_code=201,
+            detail=UnauthorizedMessage().detail,
+        )
+    return token
+
+
+# AnyPydanticModel = TypeVar('AnyPydanticModel', bound=BaseModel)
+
+
+class ScimJsonResponse(JSONResponse):
+    media_type = "application/scim+json"
+
+    def __init__(
+        self,
+        content: ScimObject | BaseModel | dict[str, Any],
+        status_code: int = 200,
+        headers: Mapping[str, str] | None = None,
+        background: BackgroundTask | None = None,
+    ):
+        if isinstance(content, ScimObject):
+            content = content.model_dump(scim_ctx=Context.DEFAULT)
+        elif isinstance(content, (NCUser, NCGroup)):
+            content = content.to_scim().model_dump(scim_ctx=Context.DEFAULT)
+
+        super().__init__(
+            content=content,
+            status_code=status_code,
+            headers=headers,
+            background=background,
+        )
+
+
+class ScimContentlessResponse(Response):
+    media_type = "application/scim+json"
+
+
+app = FastAPI(separate_input_output_schemas=False)
 app.add_middleware(QueryStringFlatteningMiddleware)
+
+
+COMMON_API_RESPONSES: dict[int | str, dict[str, Any]] = {
+    401: {"model": UnauthorizedMessage},
+    422: {"model": ScimValidationError},
+    500: {"model": ScimInternalServerError},
+}
+COMMON_API_DEPENDENCIES = [Depends(get_token)]
+
+
+@app.exception_handler(RequestValidationError)
+async def request_validation_exception_handler(
+    request: ..., exc: RequestValidationError
+):
+    return ScimJsonResponse(status_code=422, content=ScimValidationError(exc))
+
+
+@app.exception_handler(500)
+async def internal_server_error_handler(request: ..., exc: Exception):
+    return ScimJsonResponse(status_code=500, content=ScimInternalServerError(exc))
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: ..., exc: HTTPException):
+    return ScimJsonResponse(status_code=exc.status_code, content=ScimHttpException(exc))
 
 
 # Users
 
 
-@app.get("/Users")
+@app.get(
+    "/Users",
+    response_class=ScimJsonResponse,
+    response_model=ListResponse[ScimUser],
+    dependencies=COMMON_API_DEPENDENCIES,
+    responses=COMMON_API_RESPONSES,
+)
 def get_users(
     attributes: Annotated[list, Query()] = [],
     count: Optional[int] = None,
@@ -91,7 +196,8 @@ def get_users(
     # sortBy: str = 'id',
     # sortOrder: Optional[SearchRequest.SortOrder] = None,
     startIndex: int = 1,
-):
+    # token: str = Depends(get_token),
+) -> ScimJsonResponse:
     # Get all users
     all_users = UserAPI.get_all()
 
@@ -104,51 +210,94 @@ def get_users(
         u_data = UserAPI.get(u)
         scim_users.append(u_data.to_scim())
 
-    return ListResponse[ScimUser].model_validate(
+    out_data = ListResponse[ScimUser].model_validate(
         {"Resources": [u.model_dump() for u in scim_users]}
+    )
+    return ScimJsonResponse(
+        status_code=200,
+        content=out_data,
     )
 
 
-@app.get("/Users/{user_id}")
+@app.get(
+    "/Users/{user_id}",
+    response_class=ScimJsonResponse,
+    response_model=ScimGroup,
+    dependencies=COMMON_API_DEPENDENCIES,
+    responses=COMMON_API_RESPONSES,
+)
 def get_user_by_id(
     user_id: str,
     attributes: Annotated[list, Query()] = [],
     excludedAttributes: Annotated[list, Query()] = [],
+    token: str = Depends(get_token),
 ):
     """Get the user with the specified user ID."""
     user = UserAPI.get(user_id)
 
-    return user.to_scim()
+    return ScimJsonResponse(user)
 
 
-@app.post("/Users")
-def create_user(data: ScimUser):
+@app.post(
+    "/Users",
+    response_model=ScimUser,
+    response_class=ScimJsonResponse,
+    dependencies=COMMON_API_DEPENDENCIES,
+    responses=COMMON_API_RESPONSES,
+    status_code=201,
+)
+def create_user(
+    data: ScimUser = Body(media_type="application/scim+json"),
+    token: str = Depends(get_token),
+):
     nc_user = NCUser.from_scim(data)
     UserAPI.new(nc_user)
 
-    new = UserAPI.get(nc_user.id).to_scim().model_dump()
+    new = UserAPI.get(nc_user.id)
 
-    return JSONResponse(status_code=201, content=new)
+    return ScimJsonResponse(status_code=201, content=new)
 
 
-@app.delete("/Users/{user_id}")
-def delete_user(user_id: str):
+@app.delete(
+    "/Users/{user_id}",
+    status_code=204,
+    dependencies=COMMON_API_DEPENDENCIES,
+    responses=COMMON_API_RESPONSES,
+    response_class=ScimContentlessResponse,
+)
+def delete_user(
+    user_id: str,
+    token: str = Depends(get_token),
+):
     UserAPI.delete(user_id)
-    return Response(status_code=204)
+    return ScimContentlessResponse(status_code=204)
 
 
-@app.patch("/Users/{user_id}")
-def update_user_not_implemented(user_id: str, data: PatchOp[ScimUser]):
-    raise HTTPException(
-        status_code=405,
-        detail="PATCH operations on users are currently not implemented. See README.md for details.",
-    )
+# @app.patch(
+#     "/Users/{user_id}",
+#     dependencies=COMMON_API_DEPENDENCIES,
+#     responses=COMMON_API_RESPONSES,
+#     response_class=ScimJsonResponse,
+
+# )
+# def update_user_not_implemented(user_id: str, data: PatchOp[ScimUser]):
+#     # return ScimJsonResponse(
+#     #     status_code=405,
+#     #     content="PATCH operations on users are currently not implemented. See README.md for details.",
+#     # )
+#     return HTTPException(status_code=405)
 
 
 # Groups
 
 
-@app.get("/Groups")
+@app.get(
+    "/Groups",
+    response_model=ListResponse[ScimGroup],
+    response_class=ScimJsonResponse,
+    dependencies=COMMON_API_DEPENDENCIES,
+    responses=COMMON_API_RESPONSES,
+)
 def get_groups(
     # attributes: Annotated[list, Query()] = [],
     count: Optional[int] = None,
@@ -157,7 +306,8 @@ def get_groups(
     # sortBy: str = 'id',
     # sortOrder: Optional[SearchRequest.SortOrder] = None,
     startIndex: int = 1,
-) -> ListResponse[ScimGroup]:
+    token: str = Depends(get_token),
+):
     # Get all groups
     all_group_ids = GroupAPI.get()
 
@@ -172,17 +322,27 @@ def get_groups(
 
     scim_groups: list[ScimGroup] = [ncg.to_scim() for ncg in nc_groups]
 
-    return ListResponse[ScimGroup].model_validate(
-        {"Resources": [g.model_dump() for g in scim_groups]}
+    return ScimJsonResponse(
+        # status_code=200,
+        content=ListResponse[ScimGroup].model_validate(
+            {"Resources": [g.model_dump() for g in scim_groups]}
+        )
     )
 
 
-@app.get("/Groups/{group_id}")
+@app.get(
+    "/Groups/{group_id}",
+    response_model=ScimGroup,
+    response_class=ScimJsonResponse,
+    dependencies=COMMON_API_DEPENDENCIES,
+    responses=COMMON_API_RESPONSES,
+)
 def get_group_by_id(
     group_id: str,
     # attributes: Annotated[list, Query()] = ["members"],
     # excludedAttributes: Annotated[list, Query()] = [],
-) -> ScimGroup:
+    token: str = Depends(get_token),
+):
     nc_group = NCGroup.model_validate(
         {
             "groupid": group_id,
@@ -190,17 +350,25 @@ def get_group_by_id(
         }
     )
 
-    return nc_group.to_scim()
+    return ScimJsonResponse(content=nc_group)
 
 
-@app.post("/Groups")
-def create_group(data: ScimGroup):
+@app.post(
+    "/Groups",
+    response_model=ScimGroup,
+    response_class=ScimJsonResponse,
+    dependencies=COMMON_API_DEPENDENCIES,
+    responses=COMMON_API_RESPONSES,
+    status_code=201,
+)
+def create_group(
+    data: ScimGroup = Body(media_type="application/scim+json"),
+    token: str = Depends(get_token),
+):
     if data.display_name is None:
-        return JSONResponse(
+        raise HTTPException(
             status_code=400,
-            content={
-                "message": "The `displayName` field is required for group creation."
-            },
+            detail="The `displayName` field is required for group creation",
         )
 
     GroupAPI.new(data.display_name)
@@ -213,27 +381,44 @@ def create_group(data: ScimGroup):
             "members": members,
         }
     )
-    return JSONResponse(status_code=201, content=group.model_dump())
+    return ScimJsonResponse(status_code=201, content=group)
 
 
-@app.delete("/Groups/{group_id}")
-def delete_group(group_id: str):
+@app.delete(
+    "/Groups/{group_id}",
+    status_code=204,
+    response_class=ScimContentlessResponse,
+    dependencies=COMMON_API_DEPENDENCIES,
+    responses=COMMON_API_RESPONSES,
+)
+def delete_group(
+    group_id: str,
+    token: str = Depends(get_token),
+):
     GroupAPI.delete(group_id)
-    return Response(status_code=204)
+    return ScimContentlessResponse(status_code=204)
 
 
-@app.patch("/Groups/{group_id}")
-def update_group_membership(group_id: str, data: PatchOp[ScimGroup]):
+@app.patch(
+    "/Groups/{group_id}",
+    response_class=ScimJsonResponse,
+    dependencies=COMMON_API_DEPENDENCIES,
+    responses=COMMON_API_RESPONSES,
+    response_model=ScimGroup,
+)
+def update_group_membership(
+    group_id: str,
+    data: PatchOp[ScimGroup] = Body(media_type="application/scim+json"),
+    token: str = Depends(get_token),
+):
     assert data.operations is not None, "No operations given"
     assert data.operations[0].value is not None, "No users given"
     _users_raw: list[dict[str, str]] = data.operations[0].value
 
     if data.operations[0].path != "members":
-        return JSONResponse(
+        raise HTTPException(
             status_code=400,
-            content={
-                "message": "Only patching group membership is implemented at this time."
-            },
+            detail="Only patching group membership is implemented at this time",
         )
 
     match data.operations[0].op:
@@ -251,15 +436,25 @@ def update_group_membership(group_id: str, data: PatchOp[ScimGroup]):
                 detail=f"Unimplemented operation '{data.operations[0].op}'",
             )
 
-    return Response(status_code=204)
+    group = NCGroup(groupid=group_id, members=GroupAPI.get_members(group_id))
+
+    return ScimJsonResponse(status_code=200, content=group)
 
 
 # Service Provider Config
 
 
-@app.get("/ServiceProviderConfig")
-def get_service_provider_config():
-    return ServiceProviderConfig(
+@app.get(
+    "/ServiceProviderConfig",
+    response_class=ScimJsonResponse,
+    dependencies=COMMON_API_DEPENDENCIES,
+    responses=COMMON_API_RESPONSES,
+    response_model=ServiceProviderConfig,
+)
+def get_service_provider_config(
+    token: str = Depends(get_token),
+):
+    spc = ServiceProviderConfig(
         sort=Sort(supported=False),
         etag=ETag(supported=False),
         bulk=Bulk(supported=False),
@@ -267,16 +462,19 @@ def get_service_provider_config():
         patch=Patch(supported=True),
         filter=Filter(supported=False),
     )
+    return ScimJsonResponse(status_code=200, content=spc)
 
 
-@app.get("/Me", name="SCIM /Me endpoint - unimplemented")
-@app.put("/Me", name="SCIM /Me endpoint - unimplemented")
-@app.patch("/Me", name="SCIM /Me endpoint - unimplemented")
-def me_unimplemented():
-    """SCIM /Me endpoint - unimplemented"""
-    return HTTPException(
-        status_code=404, detail="The '/Me' endpoint is not implemented."
-    )
+# @app.get("/Me", name="SCIM /Me endpoint - unimplemented")
+# @app.put("/Me", name="SCIM /Me endpoint - unimplemented")
+# @app.patch("/Me", name="SCIM /Me endpoint - unimplemented")
+# def me_unimplemented(
+#     token: str = Depends(get_token),
+# ):
+#     """SCIM /Me endpoint - unimplemented"""
+#     return HTTPException(
+#         status_code=404, detail="The '/Me' endpoint is not implemented."
+#     )
 
 
 # if __name__ == "__main__":

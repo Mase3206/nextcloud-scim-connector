@@ -62,8 +62,12 @@ jobs:
         poetry install
         poetry install --with=test
 
+    - name: Configure local dev .env file
+      run: |
+        make env
+
     - name: Create users and add them to groups for testing
-      run: ./tests/prep-users-and-groups.sh
+      run: eval $(cat .env) ./tests/prep-users-and-groups.sh
 
     - name: Run pytest
       run:  poetry run pytest
