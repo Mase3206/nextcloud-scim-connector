@@ -1,5 +1,4 @@
 import json
-from pathlib import Path
 
 import pytest
 from environs import env
@@ -12,8 +11,6 @@ from scim2_models import (
 
 from nc_scim.receiver import app
 
-env_file = Path(".").resolve() / ".env"
-assert env_file.exists()
 env.read_env()
 
 client = TestClient(app, headers={"Authorization": f"Bearer {env.str('SCIM_TOKEN')}"})
