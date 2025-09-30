@@ -111,9 +111,13 @@ class NCUser(BaseModel):
     @staticmethod
     def from_scim(scim_user: ScimUser) -> NCUser:
         # These fields are required.
-        assert scim_user.user_name
-        assert scim_user.display_name
-        assert (e := scim_user.emails) and e[0].value
+        # assert scim_user.user_name
+        # assert scim_user.display_name
+        # assert (e := scim_user.emails) and e[0].value
+        if (e := scim_user.emails) and e[0].value:
+            email = e[0].value
+        else:
+            email = None
 
         # Get or parse address
         if (addrs := scim_user.addresses) and len(addrs) > 0:
@@ -136,7 +140,7 @@ class NCUser(BaseModel):
         nc_user = {
             "id": scim_user.user_name,
             "displayname": scim_user.display_name,
-            "email": scim_user.emails[0].value,
+            "email": email,
             "groups": [g.value for g in scim_user.groups] if scim_user.groups else [],
             "phone": scim_user.phone_numbers[0].value
             if (scim_user.phone_numbers and len(scim_user.phone_numbers) > 0)
