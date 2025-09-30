@@ -8,12 +8,12 @@ RUN apt-get install -y iputils-ping curl
 WORKDIR /opt/nc_scim
 
 # Install nc_scim (built by Poetry) and all its dependencies
-COPY dist/nc_scim*.whl .
+COPY ./dist/nc_scim*.whl .
 RUN pip install *.whl && \
     rm -rf *.whl
 
 # Copy nc_scim source
-COPY src/nc_scim/* .
+COPY ./src/nc_scim/* .
 
 # Remove pycache files that may have been copied over
 RUN find . -name "*.pyc" -delete && \
