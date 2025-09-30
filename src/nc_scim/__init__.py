@@ -5,9 +5,14 @@
 # with open("config.yml") as f:
 #     raw_config: dict[str, Any] = yaml.safe_load(f)
 
+from pathlib import Path
+
 from environs import env
 
 env.read_env()
+CONNECTOR_BASEPATH: str = str(
+    (env.path("CONNECTOR_BASEPATH", Path("/")) / "scim" / "v2").resolve()
+)
 SCIM_TOKEN: str = env.str("SCIM_TOKEN")
 NEXTCLOUD_BASEURL: str = f"{env.str('NEXTCLOUD_BASEURL')}/ocs/v1.php/cloud"
 NEXTCLOUD_HTTPS: bool = env.bool("NEXTCLOUD_HTTPS")

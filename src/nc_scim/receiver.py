@@ -29,7 +29,7 @@ from scim2_models.scim_object import ScimObject
 from starlette.background import BackgroundTask
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from nc_scim import SCIM_TOKEN
+from nc_scim import CONNECTOR_BASEPATH, SCIM_TOKEN
 from nc_scim.forwarder import GroupAPI, UserAPI
 from nc_scim.models import NCGroup, NCUser
 
@@ -149,7 +149,7 @@ class ScimContentlessResponse(Response):
     media_type = "application/scim+json"
 
 
-app = FastAPI(separate_input_output_schemas=False)
+app = FastAPI(separate_input_output_schemas=False, root_path=str(CONNECTOR_BASEPATH))
 app.add_middleware(QueryStringFlatteningMiddleware)
 
 
