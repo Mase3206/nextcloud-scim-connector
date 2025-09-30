@@ -56,9 +56,9 @@ class NCUser(BaseModel):
     id: str = Field(alias="userid")
     """Also accepts `userid` as a valid field alias."""
     email: Optional[EmailStr] = None
-    displayname: str
+    displayname: Optional[str] = None
     # password: str = Field('This is not set by SCIM.', frozen=True)
-    enabled: bool = False
+    enabled: Optional[bool] = None
     groups: Annotated[list[str], BeforeValidator(coerce_to_list)] = []
     # subadmin: Optional[list[str]] = None
     quota: Optional[Quota] = None
